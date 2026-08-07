@@ -1,0 +1,6 @@
+# aliases.yaml
+java: java-architect
+k8s: k3s-admin
+ansible: ansible-engineer
+pve: pve-infra-migration
+sec: security-audit

@@ -126,8 +126,25 @@ def main():
     )
 
     args = parser.parse_args()
-    compiled_text = compile_profile(args.profile)
-    profile_name = args.profile.replace(".yaml", "")
+
+    # ================= 新增：解析 aliases.yaml 逻辑 =================
+    raw_profile = args.profile
+    alias_path = BASE_DIR / "aliases.yaml"
+
+    if alias_path.exists():
+        with open(alias_path, "r", encoding="utf-8") as f:
+            try:
+                aliases = yaml.safe_load(f) or {}
+                # 如果传入的名字在别名表里，就替换成真正的 profile 名称
+                if raw_profile in aliases:
+                    raw_profile = aliases[raw_profile]
+            except Exception as e:
+                print(f"[Warning] 无法解析 aliases.yaml: {e}", file=sys.stderr)
+    # =================================================================
+
+    # 传入解析后的真实名称进行编译
+    compiled_text = compile_profile(raw_profile)
+    profile_name = raw_profile.replace(".yaml", "")
 
     if args.command == "run":
         # 仅输出干净的文本，确保可以安全传递给 pbcopy 或 llm
