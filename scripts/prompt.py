@@ -12,8 +12,12 @@ except ImportError:
     print("[Error] 缺少依赖。请执行: uv pip install PyYAML jsonschema", file=sys.stderr)
     sys.exit(1)
 
-# 自动推断 Prompt 仓库根目录 (脚本所在的上一级)
-BASE_DIR = Path(__file__).resolve().parent.parent
+# 修改为：
+# 推断项目根目录 (personal-ai-kit)
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# 所有的 Prompt 资产文件现在都位于 prompts/ 目录下
+BASE_DIR = REPO_ROOT / "prompts"
 
 
 def strip_front_matter(text: str) -> str:
@@ -37,7 +41,7 @@ def read_component(category: str, filename: str) -> str:
 
 def validate_profile(profile_data: dict) -> None:
     """根据 JSON Schema 校验 Profile 格式"""
-    schema_path = BASE_DIR / "schemas" / "profile.schema.json"
+    schema_path = REPO_ROOT / "schemas" / "profile.schema.json"
     if not schema_path.exists():
         print(f"[Error] 找不到 Schema 校验文件: {schema_path}", file=sys.stderr)
         sys.exit(1)
@@ -151,7 +155,7 @@ def main():
         print(compiled_text)
 
     elif args.command == "compile":
-        build_dir = BASE_DIR / "build"
+        build_dir = REPO_ROOT / "build"
         target_path = build_dir / f"{profile_name}.md"
         write_to_file(compiled_text, target_path)
 
