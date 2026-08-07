@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Prompt Profile Schema",
+  "description": "Validation schema for AI Prompt profiles",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Profile 的唯一标识名称"
+    },
+    "description": {
+      "type": "string",
+      "description": "该 Profile 适用场景的简短描述"
+    },
+    "system": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "全局底线约束 (System Policy)"
+    },
+    "roles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "角色面具 (Persona)"
+    },
+    "contexts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "环境静态知识 (Knowledge Context)"
+    },
+    "workflows": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "具体执行标准流 (SOP Workflows)"
+    }
+  },
+  "required": ["name", "system", "roles", "contexts", "workflows"],
+  "additionalProperties": false
+}

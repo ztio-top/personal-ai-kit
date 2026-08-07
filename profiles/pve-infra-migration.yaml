@@ -1,0 +1,13 @@
+name: pve-infra-migration
+description: Proxmox VE 底层运维、RTX 3090 直通配置隔离与物理节点平滑升级
+system:
+  - base-engineering
+  - safety-rules
+roles:
+  - devops-engineer
+contexts:
+  - proxmox-ve
+  - homelab-infra
+workflows:
+  - system-migration
+  - troubleshooting

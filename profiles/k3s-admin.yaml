@@ -1,0 +1,13 @@
+name: k3s-admin
+description: 跨云 K3s 故障排查、WireGuard 数据面网络诊断与 Pod 调度分析
+system:
+  - base-engineering
+  - safety-rules
+roles:
+  - cloud-native-engineer
+contexts:
+  - k3s-cluster
+  - homelab-infra
+  - network-mesh
+workflows:
+  - troubleshooting

@@ -1,0 +1,12 @@
+name: security-audit
+description: 全栈漏洞挖掘、并发安全审查、越权防范与零信任架构改造
+system:
+  - base-engineering
+  - safety-rules
+roles:
+  - security-expert
+contexts:
+  - java-spring-ecosystem
+  - k3s-cluster
+workflows:
+  - code-review

@@ -1,0 +1,12 @@
+name: java-architect
+description: Java后端架构设计、多 JDK 混编环境下的代码审查与性能调优
+system:
+  - base-engineering
+  - response-format
+roles:
+  - java-architect
+contexts:
+  - java-spring-ecosystem
+workflows:
+  - code-review
+  - architecture-design

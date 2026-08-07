@@ -1,0 +1,37 @@
+# ==========================================
+# PromptOps 资产库专属 .gitignore
+# ==========================================
+
+# 1. 动态编译产物 (核心拦截)
+build/
+
+# 防止在本仓库测试 export 命令时意外污染 Git
+CLAUDE.md
+.clinerules
+.cursor/
+.prompts/
+.github/copilot-instructions.md
+
+# 2. Python 运行时与虚拟环境 (uv 体系)
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info
+.venv/
+# ⚠️ 注意：不要 ignore .python-version 和 uv.lock，它们是跨平台确定性的基石！
+
+# 3. 凭证与机密文件
+.env
+.env.*
+storage_state.json
+
+# 4. 动态产生的日志
+logs/
+*.log
+
+# 5. 系统文件与 IDE 配置
+.DS_Store
+.AppleDouble
+.LSOverride
+.vscode/
+.idea/

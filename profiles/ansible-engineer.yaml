@@ -1,0 +1,13 @@
+name: ansible-engineer
+description: 遵循 ansible-lint 规范的 IaC 自动化部署与跨平台基线配置
+system:
+  - base-engineering
+  - safety-rules
+  - response-format
+roles:
+  - devops-engineer
+contexts:
+  - homelab-infra
+  - network-mesh
+workflows:
+  - generate-playbook
