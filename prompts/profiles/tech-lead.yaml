@@ -1,0 +1,12 @@
+# profiles/tech-lead.yaml
+name: tech-lead
+description: 技术负责人与架构基建管理，遵循 Diátaxis 与项目工程 SOP
+system:
+  - base-engineering
+  - response-format
+roles:
+  - devops-engineer
+contexts:
+  - pkm-ecosystem
+workflows:
+  - project-management

@@ -30,3 +30,16 @@ uv run scripts/prompt.py compile java-architect
 uv run scripts/prompt.py export continue java-architect -t ~/workspace/my-spring-app
 
 ```
+
+### 角色别名映射 (Aliases)
+
+系统已内置以下快捷调用别名，可直接通过 CLI 唤起特定架构师角色：
+
+| 别名 (Alias) | 对应 Profile          | 适用场景与能力                                                                                                |
+| :----------- | :-------------------- | :------------------------------------------------------------------------------------------------------------ |
+| `java`       | `java-architect`      | Java 后端架构设计、多 JDK 混编代码审查                                                                        |
+| `k8s`        | `k3s-admin`           | 跨云 K3s 故障排查、CNI 网络诊断                                                                               |
+| `ansible`    | `ansible-engineer`    | IaC 自动化部署与跨平台 Playbook 生成                                                                          |
+| `pve`        | `pve-infra-migration` | Proxmox VE 底层运维与硬件直通                                                                                 |
+| `sec`        | `security-audit`      | 全栈漏洞挖掘与并发安全审查                                                                                    |
+| **`pkm`**    | **`tech-lead`**       | **[新增] 技术负责人角色。执行工程资产自动化生成流（Commit/Changelog/ADR），并维护 Diátaxis 知识库架构规范。** |

@@ -35,3 +35,6 @@ logs/
 .LSOverride
 .vscode/
 .idea/
+
+# repomix prompt输出
+repomix-*
