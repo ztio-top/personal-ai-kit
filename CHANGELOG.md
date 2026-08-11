@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2026-08-11
+
+### Changed
+
+- **Dependencies**: 更新了 `uv.lock` 锁文件，正式锁定了 `requests` 及其传递依赖包，并将当前项目自身的安装状态从虚拟模式 (virtual) 修正为可编辑模式 (editable)。
+
+### Fixed
+
+- **Build System**: 修复了执行 `uv sync` 时由于 `hatchling` 默认的自动发现机制无法匹配项目名 (`personal-ai-kit`) 与源码目录 (`src/ai_kit`) 所导致的构建崩溃问题。通过显式声明 wheel 目标的 `packages` 路径彻底解决了此报错。
+
 ## [0.2.0] - 2026-08-11
 
 ### Added
