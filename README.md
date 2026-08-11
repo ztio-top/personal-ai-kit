@@ -2,6 +2,12 @@
 
 这是一个基于 **PromptOps** 理念构建的个人 AI 提示词代码化资产库。通过将 Prompt 拆分为 `System`, `Roles`, `Contexts`, `Workflows` 四个维度，并利用 Python 编译器动态组装，实现 AI 上下文的高度复用与跨 IDE 精准分发。
 
+同时本项目是 PEOS (个人工程操作系统) 的核心控制器 (Controller)，采用现代化的 `src-layout` 架构，由三大引擎驱动：
+
+1. **PromptOps 引擎 (`promptops`)**：负责 Prompt as Code 的动态组装与 IDE 跨端分发。
+2. **RAG 引擎 (`peos-ask`)**：结合元数据预过滤技术，提供零幻觉的本地知识库问答诊断。
+3. **治理引擎 (`peos-doctor`)**：自动化扫描并修复知识库元数据，保障数据层 (Model) 的架构纯洁性。
+
 ## 🏗 目录架构
 
 - `system/`：全局工程底线与输出格式约束。
@@ -14,22 +20,35 @@
 
 ## 🚀 快速开始
 
-本项目由 `uv` 进行环境管理。
+本项目完全由 `uv` 托管虚拟环境与依赖。
 
 ```bash
 # 1. 环境初始化
 uv sync
 
-# 2. 编译并输出到终端 (用于管道调用或本地 LLM)
-uv run scripts/prompt.py run k3s-admin
+# ==========================================
+# 引擎 A: PromptOps 编译器 (指令: promptops)
+# ==========================================
+uv run promptops run k3s-admin
+uv run promptops export cursor java-architect -t ~/workspace/my-spring-app
 
-# 3. 静态编译至 build 目录
-uv run scripts/prompt.py compile java-architect
+# ==========================================
+# 引擎 B: PEOS RAG 问答机 (指令: peos-ask)
+# ==========================================
+# 必须先设置外部知识库环境变量
+export PEOS_KNOWLEDGE_DIR="$HOME/git/[github.com/ztio-top/knowledge](https://github.com/ztio-top/knowledge)"
 
-# 4. 定向注入到目标 IDE/工具 (如 Continue, Cursor, Claude Code)
-uv run scripts/prompt.py export continue java-architect -t ~/workspace/my-spring-app
+# 默认仅查询 type=runbook 且 status=active 的高质量资产
+uv run peos-ask "K3s 节点离线怎么恢复？" -k "WireGuard"
 
-```
+# ==========================================
+# 引擎 C: PEOS Doctor 治理机 (指令: peos-doctor)
+# ==========================================
+# 安全扫描 (Dry-run 模式，默认开启，仅推断并打印建议)
+uv run peos-doctor
+
+# 实际修复 (真实写入推断出的 YAML Front Matter)
+uv run peos-doctor --fix
 
 ### 角色别名映射 (Aliases)
 
@@ -42,4 +61,5 @@ uv run scripts/prompt.py export continue java-architect -t ~/workspace/my-spring
 | `ansible`    | `ansible-engineer`    | IaC 自动化部署与跨平台 Playbook 生成                                                                          |
 | `pve`        | `pve-infra-migration` | Proxmox VE 底层运维与硬件直通                                                                                 |
 | `sec`        | `security-audit`      | 全栈漏洞挖掘与并发安全审查                                                                                    |
-| **`pkm`**    | **`tech-lead`**       | **[新增] 技术负责人角色。执行工程资产自动化生成流（Commit/Changelog/ADR），并维护 Diátaxis 知识库架构规范。** |
+| **`peos`**    | **`tech-lead`**       | **[新增] 技术负责人角色。执行工程资产自动化生成流（Commit/Changelog/ADR），并维护 Diátaxis 知识库架构规范。** |
+```

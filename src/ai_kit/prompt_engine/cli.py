@@ -14,7 +14,7 @@ except ImportError:
 
 # 修改为：
 # 推断项目根目录 (personal-ai-kit)
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # 所有的 Prompt 资产文件现在都位于 prompts/ 目录下
 BASE_DIR = REPO_ROOT / "prompts"

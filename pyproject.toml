@@ -1,7 +1,16 @@
 [project]
-name = "prompt-library"
-version = "0.1.0"
-description = "Add your description here"
+name = "personal-ai-kit"
+version = "0.2.0"
+description = "Personal AI toolkit featuring PromptOps compiler and PEOS RAG engine"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["jsonschema>=4.26.0", "pyyaml>=6.0.3"]
+dependencies = [
+    "jsonschema>=4.26.0",
+    "pyyaml>=6.0.3",
+    "requests>=2.31.0"
+]
+
+[project.scripts]
+peos-doctor = "ai_kit.governance.cli:main"
+promptops = "ai_kit.prompt_engine.cli:main"
+peos-ask = "ai_kit.rag_engine.cli:main"

@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-08-11
+
+### Added
+
+- **RAG Engine**: 新增 `peos-ask` 问答引擎 (`src/ai_kit/rag_engine/cli.py`)，支持通过读取本地结构化元数据进行硬过滤（预处理），并与本地 Ollama (默认 `qwen2.5:14b`) 进行高优语境推理。
+- **Governance Engine**: 新增 `peos-doctor` 治理引擎 (`src/ai_kit/governance/cli.py`)，支持基于物理目录拓扑智能推断 `type` 与 `domain`，自动修复缺失 YAML Front Matter 的遗留 Markdown 资产。
+- **CLI Entrypoints**: 在 `pyproject.toml` 中注册了 `promptops`, `peos-ask`, `peos-doctor` 三大全局命令行入口。
+
+### Changed
+
+- **Architecture**: 项目全面迁移至 Python 官方推荐的 `src-layout` 规范，实现了业务逻辑的高度模块化。
+- **Project Scope**: 项目名称由 `prompt-library` 正式更名为 `personal-ai-kit`，版本号跃迁至 `v0.2.0`。
+- **Contexts**: 升级 `peos-architecture.md` 至 v2.1.0，同步了 9 个顶级物理目录的拓扑规范，并明确了 `draft | active | deprecated | superseded | archived` 五大生命周期状态的语义。
+- **PromptOps**: `scripts/prompt.py` 迁移至 `src/ai_kit/prompt_engine/cli.py`，并更新了对根目录相对路径的解析逻辑。
+
+### Removed
+
+- 删除了根目录下无实际业务逻辑的 `main.py` 占位文件。
+- 移除了扁平化的 `scripts/` 目录结构。
+
 ## [0.1.1] - 2026-08-10
 
 ### Added
