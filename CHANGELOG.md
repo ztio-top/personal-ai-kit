@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-08-11
+
+### Added
+
+- **Governance Engine**: `peos-doctor` 脚本引入了颠覆性的 `--auto-tag` 可选参数。该功能通过调用本地大模型（默认：`qwen2.5:14b`）分析 Markdown 正文前 1000 个字符，结合 `9-Metadata/tags.yaml` 提供严格上下文约束，实现高度精确的自动化语义打标。
+
+### Changed
+
+- **Governance Engine**: 在执行自动推断与修复时，支持通过 `-m` 参数动态指定底层推理模型。大语言模型输出的所有标签，将被代码层的“硬拦截网”清洗，彻底终结了模型产生幻觉导致元数据污染的风险。
+- **Governance Engine**: `peos-doctor` 脚本彻底移除了硬编码的 Ollama API 地址。现在支持通过全局环境变量 `PEOS_OLLAMA_API_URL` 实现地址的热重载，并提供 `--api-url` 参数以在执行时进行单次覆盖（优先于环境变量）。提高了网络拓扑改变或异地推理节点转移时的系统健壮性。
+
 ## [0.2.2] - 2026-08-11
 
 ### Changed

@@ -50,6 +50,16 @@ uv run peos-doctor
 # 实际修复 (真实写入推断出的 YAML Front Matter)
 uv run peos-doctor --fix
 
+# 🤖 [高级特性] 开启 AI 智能打标 (依赖 Ollama 引擎)
+# 默认请求本地 11434 端口。若 Ollama 部署在远端异构算力节点，可通过环境变量热加载配置：
+export PEOS_OLLAMA_API_URL="http://192.168.3.100:11434/api/chat"
+
+# 执行打标 (系统将自动读取上述环境变量)
+uv run peos-doctor --fix --auto-tag -m "qwen2.5:14b"
+
+# 或者在单次执行时使用 CLI 参数强制覆盖：
+uv run peos-doctor --fix --auto-tag --api-url "http://vps.mydomain.com:11434/api/chat"
+
 ### 角色别名映射 (Aliases)
 
 系统已内置以下快捷调用别名，可直接通过 CLI 唤起特定架构师角色：

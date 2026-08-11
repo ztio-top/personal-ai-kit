@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import os
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
+
+try:
+    import requests
+    import yaml
+except ImportError:
+    print(
+        "❌ 错误: 缺少依赖。请在 ai-kit 环境下执行: uv pip install requests pyyaml",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 # PEOS 架构推理映射表 (Type)
 TYPE_INFERENCE = {
@@ -20,6 +31,65 @@ TYPE_INFERENCE = {
 IGNORE_FILES = {"README.md", "CHANGELOG.md", "glossary.md"}
 
 
+def get_allowed_tags(knowledge_dir: Path) -> list:
+    """从 9-Metadata/tags.yaml 提取 SSOT 合法标签池"""
+    tags_file = knowledge_dir / "9-Metadata" / "tags.yaml"
+    if not tags_file.exists():
+        return []
+    try:
+        data = yaml.safe_load(tags_file.read_text(encoding="utf-8"))
+        return data.get("tags", []) if data else []
+    except Exception:
+        return []
+
+
+def ask_llm_for_tags(
+    content: str, allowed_tags: list, model: str, api_url: str
+) -> list:
+    """调用本地 LLM 进行语义打标，实施双重防腐拦截"""
+    if not allowed_tags:
+        return []
+
+    # 截取前 1000 个字符用于语义分析
+    snippet = content[:1000]
+
+    system_prompt = (
+        "你是一个极其严谨的技术知识库管理员。你的任务是为文本打标签。\n"
+        f"你【只能】从以下合法标签池中挑选 1 到 3 个最相关的标签：{allowed_tags}\n"
+        "【绝对禁止】创造新标签。如果没有任何标签相关，必须返回空列表 []。\n"
+        '你必须且只能返回合法的 JSON 数组，不包含任何 Markdown 格式或多余的解释，例如: ["k3s", "ansible"]'
+    )
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"文本片段如下:\n{snippet}"},
+        ],
+        "stream": False,
+        "temperature": 0.0,
+        "format": "json",
+    }
+
+    try:
+        response = requests.post(api_url, json=payload, timeout=15)
+        response.raise_for_status()
+        result_text = response.json()["message"]["content"]
+
+        predicted_tags = json.loads(result_text)
+
+        # 物理防腐层：严格清洗不在字典中的幻觉标签
+        if isinstance(predicted_tags, list):
+            return [tag for tag in predicted_tags if tag in allowed_tags]
+        return []
+    except Exception as e:
+        print(
+            f"   [⚠️ AI 打标警告] LLM 调用失败或超时 (URL: {api_url}): {e}",
+            file=sys.stderr,
+        )
+        return []
+
+
 def extract_h1_title(content: str, fallback_name: str) -> str:
     match = re.search(r"^#\s+(.+)$", content, flags=re.MULTILINE)
     if match:
@@ -29,7 +99,7 @@ def extract_h1_title(content: str, fallback_name: str) -> str:
 
 def infer_metadata(filepath: Path) -> dict:
     parts = filepath.parts
-    metadata = {"type": None, "domain": None, "status": "active", "tags": "[]"}
+    metadata = {"type": None, "domain": None, "status": "active"}
 
     # 1. 推断 Type
     for path_part in parts:
@@ -63,18 +133,35 @@ def infer_metadata(filepath: Path) -> dict:
     return metadata
 
 
-def fix_front_matter(target_dir: str, dry_run: bool = True):
+def fix_front_matter(
+    target_dir: str,
+    dry_run: bool = True,
+    auto_tag: bool = False,
+    model: str = "qwen2.5:14b",
+    api_url: str = "",
+):
     root_path = Path(target_dir)
     if not root_path.exists():
         print(f"❌ 错误: 目标知识库路径不存在 ({root_path})", file=sys.stderr)
         sys.exit(1)
+
+    allowed_tags = []
+    if auto_tag:
+        allowed_tags = get_allowed_tags(root_path)
+        print("🤖 AI 打标已激活:")
+        print(f"   ↳ 目标接口: {api_url}")
+        print(f"   ↳ 挂载标签: {len(allowed_tags)} 个 SSOT 字典项 | 模型: {model}")
+        if not allowed_tags:
+            print(
+                "   [⚠️ 警告] 未在 9-Metadata/tags.yaml 发现合法标签，将降级为普通扫描。"
+            )
 
     today = datetime.now().strftime("%Y-%m-%d")
     fixed_count = 0
     skipped_count = 0
     manual_queue = []
 
-    print(f"🩺 启动 PEOS Doctor 诊断程序 (Dry-run: {dry_run}) | 目标: {root_path}\n")
+    print(f"\n🩺 启动 PEOS Doctor 诊断程序 (Dry-run: {dry_run}) | 目标: {root_path}\n")
 
     for root, _, files in os.walk(root_path):
         if "/." in root or root.startswith("."):
@@ -108,6 +195,14 @@ def fix_front_matter(target_dir: str, dry_run: bool = True):
 
             title = extract_h1_title(content, filepath.stem)
 
+            # AI 语义打标流水线
+            final_tags_str = "[]"
+            if auto_tag and allowed_tags:
+                predicted_tags = ask_llm_for_tags(content, allowed_tags, model, api_url)
+                if predicted_tags:
+                    # 格式化为 YAML 数组风格: [k3s, ansible]
+                    final_tags_str = f"[{', '.join(predicted_tags)}]"
+
             yaml_header = (
                 "---\n"
                 f"title: {title}\n"
@@ -115,13 +210,13 @@ def fix_front_matter(target_dir: str, dry_run: bool = True):
                 f"domain: {inferred['domain']}\n"
                 f"status: {inferred['status']}\n"
                 f"created: {today}\n"
-                f"tags: {inferred['tags']}\n"
+                f"tags: {final_tags_str}\n"
                 "---\n\n"
             )
 
             print(f"🔧 [发现缺失 & 自动修复] {filepath.relative_to(root_path)}")
             print(
-                f"   ↳ 注入元数据: type={inferred['type']} | domain={inferred['domain']} | status={inferred['status']}"
+                f"   ↳ 注入元数据: type={inferred['type']} | domain={inferred['domain']} | tags={final_tags_str}"
             )
 
             if not dry_run:
@@ -144,17 +239,41 @@ def fix_front_matter(target_dir: str, dry_run: bool = True):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="PEOS 知识库自动修复与治理工具")
+    parser = argparse.ArgumentParser(description="PEOS 知识库自动修复与智能治理工具")
     parser.add_argument(
         "--fix", action="store_true", help="关闭 dry-run 模式，实际修改文件"
     )
     parser.add_argument(
-        "-d", "--dir", help="知识库根目录 (优先读取 PEOS_KNOWLEDGE_DIR 环境变量)"
+        "-d", "--dir", help="知识库根目录 (优先读取 PEOS_KNOWLEDGE_DIR)"
+    )
+    parser.add_argument(
+        "--auto-tag", action="store_true", help="启用基于大模型的智能语义打标"
+    )
+    parser.add_argument(
+        "-m", "--model", default="qwen2.5:14b", help="智能打标使用的 Ollama 模型名称"
+    )
+    parser.add_argument(
+        "--api-url",
+        help="Ollama API 完整接口地址 (优先读取 PEOS_OLLAMA_API_URL 环境变量)",
     )
 
     args = parser.parse_args()
+
+    # 路径解析优先级: CLI 参数 > 环境变量 > 默认兜底值
     target_dir = args.dir or os.getenv("PEOS_KNOWLEDGE_DIR") or "."
-    fix_front_matter(target_dir, dry_run=not args.fix)
+    api_url = (
+        args.api_url
+        or os.getenv("PEOS_OLLAMA_API_URL")
+        or "http://127.0.0.1:11434/api/chat"
+    )
+
+    fix_front_matter(
+        target_dir,
+        dry_run=not args.fix,
+        auto_tag=args.auto_tag,
+        model=args.model,
+        api_url=api_url,
+    )
 
 
 if __name__ == "__main__":
