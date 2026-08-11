@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2] - 2026-08-11
+
+### Changed
+
+- **Governance Engine**: 重构了 `peos-doctor` 脚本的元数据推断逻辑。彻底废弃了会污染全局数据字典的 `general` 兜底领域。对于无法通过目录物理拓扑确定的文档，脚本将拒绝强行写入，转而高亮输出到“需手动处理队列 (Manual Intervention Queue)”。
+- **Governance Engine**: 增强了特殊目录的智能推断能力。位于 `5-ADR/` 的文档将自动映射至 `architecture` 领域；位于 `7-Notes/` 下的独立笔记，其状态将被安全降级为 `draft`（防止草稿污染 RAG 生产级检索），且默认分配至 `uncategorized`（未分类）领域。
+
 ## [0.2.1] - 2026-08-11
 
 ### Changed
