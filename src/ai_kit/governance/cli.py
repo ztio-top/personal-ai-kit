@@ -101,13 +101,13 @@ def infer_metadata(filepath: Path) -> dict:
     parts = filepath.parts
     metadata = {"type": None, "domain": None, "status": "active"}
 
-    # 1. 推断 Type
+    # 1. 推断 Type (从文件夹命名或 TYPE_INFERENCE 字典中匹配)
     for path_part in parts:
         if path_part in TYPE_INFERENCE:
             metadata["type"] = TYPE_INFERENCE[path_part]
             break
 
-    # 2. 推断 Domain
+    # 2. 推断 Domain 与特殊目录的架构兜底
     if "3-Resources" in parts:
         idx = parts.index("3-Resources")
         if len(parts) > idx + 1:
@@ -118,15 +118,21 @@ def infer_metadata(filepath: Path) -> dict:
             metadata["domain"] = parts[idx + 1]
     elif "5-ADR" in parts:
         metadata["domain"] = "architecture"
+    elif "2-Areas" in parts:
+        # === 针对 2-Areas 的推断 ===
+        # Area 是长期的战略、准则与蓝图，因此默认类型设为 explanation
+        if not metadata["type"]:
+            metadata["type"] = "explanation"
+        # 默认归属个人知识与精力管理领域 (pkm)，防腐拦截
+        metadata["domain"] = "pkm"
 
-    # === 针对 7-Notes 的智能降级逻辑 ===
+    # 3. 针对笔记草稿的智能降级逻辑
     if metadata["type"] == "note":
-        metadata["status"] = "draft"  # 笔记默认降级为草稿
+        metadata["status"] = "draft"
         if not metadata["domain"]:
-            # 如果笔记没有放在特定领域的子目录下，合法分配给 uncategorized
             metadata["domain"] = "uncategorized"
 
-    # 3. 终态拦截：如果依然无法推断出明确的 Type 或 Domain，交由人工处理
+    # 4. 终态拦截：如果依然无法推断，交由人工处理
     if not metadata["type"] or not metadata["domain"]:
         return None
 

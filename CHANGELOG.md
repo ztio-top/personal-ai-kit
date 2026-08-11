@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-08-11
+
+### Added
+
+- **Governance Engine**: `peos-doctor` 现已完美支持对 PARA 架构中 `2-Areas`（长期维护领域）目录的自动化推断。默认将该目录下的演进蓝图、学习计划等资产识别为 `type: explanation` 与 `domain: pkm`，大幅降低了在非技术硬核域新建文档时的元数据维护心智负担。
+
 ## [0.3.0] - 2026-08-11
 
 ### Added
