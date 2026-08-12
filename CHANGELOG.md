@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 - `peos-doctor`: 现已支持对已有 YAML Front Matter（但 `tags` 属性缺失或为空）的 Markdown 资产进行自动补全与无损回写。
 - `peos-doctor`: 诊断报告现已集成 `⚠️ AI 打标失败/需复核` 计数与具体文件清单，提升治理过程中的可观测性。
+- `peos-doctor`: 新增 `--audit` 合规审计子命令，可全局扫描并识别知识库中的标签漂移与未注册孤儿标签。
+- `peos-doctor`: 新增 `--sync-tags` 演进同步参数，配合 `--audit --fix` 使用时可将新发现的优质标签自动追加注册到 `tags.yaml` 中。
+- `peos-doctor`: 新增别名映射（Alias Normalization）机制，支持自动将常见简写或近义词（如 `k8s`）静默归一化为 SSOT 规范标签（如 `kubernetes`）。
 
 ### Changed
 
@@ -16,6 +19,8 @@ All notable changes to this project will be documented in this file.
 - `peos-doctor`: 升级防腐层机制，支持大小写不敏感的 SSOT 字典对齐，并自动过滤、审计大模型捏造的非注册标签。
 - `peos-doctor`: 调优 LLM 通信配置，显式声明 `num_ctx: 4096`、`num_predict: -1` 且将 HTTP 请求超时时间放宽至 120 秒。
 - `README.md`: 将示例命令中的推荐模型统一调整为经过验证的稳定小参数模型 `qwen2.5:14b`。
+- `peos-doctor`: 深度重构语义打标 Prompt，引入“宁缺毋滥原则（Less is More）”与反泛化负向提示，杜绝大模型盲目凑数输出弱关联泛概念标签（如为命令行速查手册强行附加 `gpu` 或 `ai`）。
+- `peos-doctor`: 扩展配置解析层，支持 `tags.yaml` 动态加载 `aliases` 映射字典。
 
 ## [0.3.1] - 2026-08-11
 

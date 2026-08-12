@@ -59,6 +59,34 @@ uv run peos-doctor --fix --auto-tag -m "qwen2.5:14b"
 
 # 或者在单次执行时使用 CLI 参数强制覆盖：
 uv run peos-doctor --fix --auto-tag -m "qwen2.5:14b" --api-url "http://192.168.2.7:11434/api/chat"
+```
+
+### 知识库标签合规审计与治理 (Tag Governance)
+
+为了维护 `9-Metadata/tags.yaml` 作为唯一真实数据源（SSOT）的纯净度，并支持别名自动归一化，`peos-doctor` 现已集成合规审计与演进同步机制：
+
+1. **执行只读合规审计**（检查全库是否存在标签漂移或未注册的野标签）：
+
+```bash
+uv run peos-doctor --audit
+
+```
+
+2. **执行严格净化模式**（自动完成别名归一化，并从文档中清除所有未注册的非法标签）：
+
+```bash
+uv run peos-doctor --audit --fix
+
+```
+
+3. **执行演进同步模式**（自动完成别名归一化，并将新发现的高价值标签自动收录进 `tags.yaml`）：
+
+**慎用：会导致 tags.yaml 的分类和注释混乱**
+
+```bash
+uv run peos-doctor --audit --fix --sync-tags
+
+```
 
 ### 角色别名映射 (Aliases)
 
@@ -71,5 +99,8 @@ uv run peos-doctor --fix --auto-tag -m "qwen2.5:14b" --api-url "http://192.168.2
 | `ansible`    | `ansible-engineer`    | IaC 自动化部署与跨平台 Playbook 生成                                                                          |
 | `pve`        | `pve-infra-migration` | Proxmox VE 底层运维与硬件直通                                                                                 |
 | `sec`        | `security-audit`      | 全栈漏洞挖掘与并发安全审查                                                                                    |
-| **`peos`**    | **`tech-lead`**       | **[新增] 技术负责人角色。执行工程资产自动化生成流（Commit/Changelog/ADR），并维护 Diátaxis 知识库架构规范。** |
+| **`peos`**   | **`tech-lead`**       | **[新增] 技术负责人角色。执行工程资产自动化生成流（Commit/Changelog/ADR），并维护 Diátaxis 知识库架构规范。** |
+
+```
+
 ```
