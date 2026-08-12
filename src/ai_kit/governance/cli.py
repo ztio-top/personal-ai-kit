@@ -50,14 +50,13 @@ def ask_llm_for_tags(
     if not allowed_tags:
         return []
 
-    # 截取前 1000 个字符用于语义分析
-    snippet = content[:1000]
+    # 截取前 N 个字符用于语义分析
+    snippet = content[:5000]
 
     system_prompt = (
         "你是一个极其严谨的技术知识库管理员。你的任务是为文本打标签。\n"
-        f"你【只能】从以下合法标签池中挑选 1 到 3 个最相关的标签：{allowed_tags}\n"
-        "【绝对禁止】创造新标签。如果没有任何标签相关，必须返回空列表 []。\n"
-        '你必须且只能返回合法的 JSON 数组，不包含任何 Markdown 格式或多余的解释，例如: ["k3s", "ansible"]'
+        f"请从以下合法标签池中挑选 1 到 3 个最相关的标签：{allowed_tags}\n"
+        '返回合法的 JSON 数组，例如: ["k3s", "ansible"]'
     )
 
     payload = {
@@ -75,16 +74,31 @@ def ask_llm_for_tags(
         response = requests.post(api_url, json=payload, timeout=15)
         response.raise_for_status()
         result_text = response.json()["message"]["content"]
+        print(f"DEBUG - LLM Raw Output: {result_text}")
 
         predicted_tags = json.loads(result_text)
 
+        # 🚀 柔性兼容：如果 LLM 不听话返回了 {"tags": ["a", "b"]}，提取其中的列表
+        if isinstance(predicted_tags, dict):
+            # 尝试提取字典里第一个是列表的值，或者直接找 "tags" 键
+            if "tags" in predicted_tags and isinstance(predicted_tags["tags"], list):
+                predicted_tags = predicted_tags["tags"]
+            else:
+                for val in predicted_tags.values():
+                    if isinstance(val, list):
+                        predicted_tags = val
+                        break
+
         # 物理防腐层：严格清洗不在字典中的幻觉标签
         if isinstance(predicted_tags, list):
-            return [tag for tag in predicted_tags if tag in allowed_tags]
+            valid_tags = [tag for tag in predicted_tags if tag in allowed_tags]
+            # 🚀 强制架构约束：不管 LLM 返回多少个，代码层死守只取前 3 个相关度最高的
+            return valid_tags[:3]
+
         return []
     except Exception as e:
         print(
-            f"   [⚠️ AI 打标警告] LLM 调用失败或超时 (URL: {api_url}): {e}",
+            f"   [⚠️ AI 打标警告] LLM 调用失败或解析异常: {e}",
             file=sys.stderr,
         )
         return []
