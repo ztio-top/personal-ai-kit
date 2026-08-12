@@ -17,6 +17,22 @@ except ImportError:
     )
     sys.exit(1)
 
+
+# ================= 新增：强制 PyYAML 输出单行数组 =================
+class FlowList(list):
+    """用于强制 PyYAML 将列表输出为单行 [a, b] 格式"""
+
+    pass
+
+
+def flow_list_representer(dumper, data):
+    return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=True)
+
+
+yaml.add_representer(FlowList, flow_list_representer)
+yaml.SafeDumper.add_representer(FlowList, flow_list_representer)
+# =================================================================
+
 # PEOS 架构推理映射表 (Type)
 TYPE_INFERENCE = {
     "how-to": "how-to",
@@ -50,37 +66,60 @@ def ask_llm_for_tags(
     if not allowed_tags:
         return []
 
-    # 截取前 N 个字符用于语义分析
+    # 恢复适度截断 (5000字符)，既保证上下文足够，又防止超长文本冲刷掉大模型的指令注意力
     snippet = content[:5000]
 
-    system_prompt = (
-        "你是一个极其严谨的技术知识库管理员。你的任务是为文本打标签。\n"
-        f"请从以下合法标签池中挑选 1 到 3 个最相关的标签：{allowed_tags}\n"
-        '返回合法的 JSON 数组，例如: ["k3s", "ansible"]'
+    # 🚀 核心优化 1：利用 LLM 的“近因效应 (Recency Bias)”，将正文放前面，规则放最后
+    prompt = (
+        f"以下是一篇技术知识库文档的片段：\n"
+        f"---------------------\n{snippet}\n---------------------\n\n"
+        f"作为严谨的知识库架构师，请为上述文档打标签。\n"
+        f"【合法标签池】(SSOT)：{allowed_tags}\n\n"
+        f"【严格约束】：\n"
+        f"1. 你必须且只能从上述【合法标签池】中挑选 1 到 5 个最相关的标签。\n"
+        f"2. 绝不允许捏造、自创任何不在池中的标签！如果全都不相关，请返回空数组 []。\n"
+        f'3. 必须直接返回 JSON 对象，格式必须为：{{"tags": ["标签1", "标签2"]}}。不要输出任何其他解释。'
     )
 
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"文本片段如下:\n{snippet}"},
+            {"role": "user", "content": prompt},
         ],
         "stream": False,
-        "temperature": 0.0,
-        "format": "json",
+        "options": {
+            "temperature": 0.0,
+            # 将 num_predict 设置为 -1（无限），或直接删除该字段，交由模型自行决定何时停止
+            "num_predict": -1,
+            "num_ctx": 4096,  # 🚀 核心优化 3：显式扩大模型的上下文窗口，破解默认 2048 限制
+        },
     }
 
     try:
-        response = requests.post(api_url, json=payload, timeout=15)
+        response = requests.post(api_url, json=payload, timeout=120)
         response.raise_for_status()
-        result_text = response.json()["message"]["content"]
-        print(f"DEBUG - LLM Raw Output: {result_text}")
 
-        predicted_tags = json.loads(result_text)
+        result_text = response.json()["message"]["content"].strip()
+        print(f"DEBUG - LLM Raw Output: '{result_text[:100]}'")
 
-        # 🚀 柔性兼容：如果 LLM 不听话返回了 {"tags": ["a", "b"]}，提取其中的列表
+        if not result_text:
+            print(
+                "   [⚠️ AI 打标警告] LLM 依然返回为空，请检查模型日志或尝试更换小参数模型",
+                file=sys.stderr,
+            )
+            return []
+
+        # 核心正则提取：从模型的任何废话中精准抠出 JSON 对象
+        json_match = re.search(r"\{[\s\S]*\}", result_text)
+        if not json_match:
+            print("   [⚠️ AI 打标警告] 未在输出中找到 JSON 格式的内容", file=sys.stderr)
+            return []
+
+        json_str = json_match.group(0)
+        predicted_tags = json.loads(json_str)
+
+        # 柔性兼容：处理返回结果
         if isinstance(predicted_tags, dict):
-            # 尝试提取字典里第一个是列表的值，或者直接找 "tags" 键
             if "tags" in predicted_tags and isinstance(predicted_tags["tags"], list):
                 predicted_tags = predicted_tags["tags"]
             else:
@@ -89,18 +128,37 @@ def ask_llm_for_tags(
                         predicted_tags = val
                         break
 
-        # 物理防腐层：严格清洗不在字典中的幻觉标签
+        # 🚀 核心优化 2：大小写不敏感的物理防腐层 + 拦截审计日志
         if isinstance(predicted_tags, list):
-            valid_tags = [tag for tag in predicted_tags if tag in allowed_tags]
-            # 🚀 强制架构约束：不管 LLM 返回多少个，代码层死守只取前 3 个相关度最高的
-            return valid_tags[:3]
+            # 将合法标签池全部转换为小写，并建立映射字典
+            allowed_lower_map = {str(t).lower(): str(t) for t in allowed_tags}
+
+            valid_tags = []
+            hallucinated_tags = []
+
+            for tag in predicted_tags:
+                tag_lower = str(tag).lower()
+                if tag_lower in allowed_lower_map:
+                    # 如果匹配成功，存入 `tags.yaml` 中标准的大小写格式
+                    valid_tags.append(allowed_lower_map[tag_lower])
+                else:
+                    # 记录被防腐层拦截的幻觉标签
+                    hallucinated_tags.append(tag)
+
+            if hallucinated_tags:
+                print(
+                    f"   [🛡️ 防腐拦截] LLM 捏造了不在 SSOT 字典中的标签，已剔除: {hallucinated_tags}"
+                )
+
+            return valid_tags[:5]
 
         return []
+
+    except json.JSONDecodeError as e:
+        print(f"   [⚠️ AI 打标警告] 抠出的 JSON 解析失败: {e}", file=sys.stderr)
+        return []
     except Exception as e:
-        print(
-            f"   [⚠️ AI 打标警告] LLM 调用失败或解析异常: {e}",
-            file=sys.stderr,
-        )
+        print(f"   [⚠️ AI 打标警告] LLM 调用失败或网络异常: {e}", file=sys.stderr)
         return []
 
 
@@ -179,7 +237,10 @@ def fix_front_matter(
     today = datetime.now().strftime("%Y-%m-%d")
     fixed_count = 0
     skipped_count = 0
-    manual_queue = []
+
+    # 🚀 新增：定义两个追踪队列
+    manual_queue = []  # 缺乏上下文，无法推断 type/domain 的队列
+    tag_failed_queue = []  # AI 打标提取失败（返回为空）的队列
 
     print(f"\n🩺 启动 PEOS Doctor 诊断程序 (Dry-run: {dry_run}) | 目标: {root_path}\n")
 
@@ -201,10 +262,60 @@ def fix_front_matter(
                 print(f"❌ 无法读取文件 {filepath}: {e}")
                 continue
 
+            # ================= 场景一：已有 Front Matter =================
             if content.startswith("---"):
-                skipped_count += 1
-                continue
+                parts = content.split("---", 2)
+                if len(parts) >= 3:
+                    try:
+                        metadata = yaml.safe_load(parts[1]) or {}
+                        body_content = parts[2].strip()
+                    except Exception:
+                        skipped_count += 1
+                        continue
 
+                    # 检查 tags 是否缺失、为 None 或为空列表
+                    current_tags = metadata.get("tags")
+                    is_tags_empty = not current_tags or (
+                        isinstance(current_tags, list) and len(current_tags) == 0
+                    )
+
+                    # 如果标签为空，且开启了自动打标
+                    if is_tags_empty and auto_tag and allowed_tags:
+                        predicted_tags = ask_llm_for_tags(
+                            body_content, allowed_tags, model, api_url
+                        )
+                        if predicted_tags:
+                            # 🚀 使用 FlowList 包装，强制触发单行输出规则
+                            metadata["tags"] = FlowList(predicted_tags)
+
+                            # 使用 yaml.dump 并显式指定 SafeDumper 重新生成 Front Matter
+                            new_front_matter = yaml.dump(
+                                metadata,
+                                allow_unicode=True,
+                                sort_keys=False,
+                                Dumper=yaml.SafeDumper,
+                            ).strip()
+                            new_full_content = (
+                                f"---\n{new_front_matter}\n---\n\n{body_content}\n"
+                            )
+
+                            print(
+                                f"🔧 [补充标签 & 自动修复] {filepath.relative_to(root_path)}"
+                            )
+                            print(f"   ↳ 补充缺失的 tags: {predicted_tags}")
+
+                            if not dry_run:
+                                filepath.write_text(new_full_content, encoding="utf-8")
+                            fixed_count += 1
+                            continue
+                        else:
+                            # 🚀 新增：记录已有头部但打标失败的文件
+                            tag_failed_queue.append(filepath)
+
+                    skipped_count += 1
+                    continue
+
+            # ================= 场景二：完全没有 Front Matter =================
             # 触发推断逻辑
             inferred = infer_metadata(filepath)
 
@@ -222,6 +333,9 @@ def fix_front_matter(
                 if predicted_tags:
                     # 格式化为 YAML 数组风格: [k3s, ansible]
                     final_tags_str = f"[{', '.join(predicted_tags)}]"
+                else:
+                    # 🚀 新增：记录完全缺失头部，修复了头部但打标失败的文件
+                    tag_failed_queue.append(filepath)
 
             yaml_header = (
                 "---\n"
@@ -243,14 +357,25 @@ def fix_front_matter(
                 filepath.write_text(yaml_header + content, encoding="utf-8")
             fixed_count += 1
 
+    # 🚀 优化：增强版的最终诊断报告输出
     print("\n" + "=" * 50)
     print("✅ 诊断报告:")
     print(f"   - 状态正常/已跳过: {skipped_count} 篇")
     print(f"   - 成功推断并{'拟' if dry_run else ''}修复: {fixed_count} 篇")
 
+    if tag_failed_queue:
+        print(f"   - ⚠️ AI 打标失败/需复核: {len(tag_failed_queue)} 篇")
+
     if manual_queue:
-        print("\n⚠️ 以下文档因缺乏上下文无法自动归类，请手动处理 (Manual Intervention):")
+        print(
+            "\n⚠️ 以下文档因缺乏路径上下文无法自动归类，请手动介入 (Manual Intervention):"
+        )
         for p in manual_queue:
+            print(f"   - {p.relative_to(root_path)}")
+
+    if tag_failed_queue:
+        print("\n⚠️ 以下文档 AI 打标失败 (未生成有效 JSON 标签，已保持为空):")
+        for p in tag_failed_queue:
             print(f"   - {p.relative_to(root_path)}")
 
     if dry_run and fixed_count > 0:

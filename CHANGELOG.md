@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.2] - 2026-08-13
+
+### Added
+
+- `peos-doctor`: 现已支持对已有 YAML Front Matter（但 `tags` 属性缺失或为空）的 Markdown 资产进行自动补全与无损回写。
+- `peos-doctor`: 诊断报告现已集成 `⚠️ AI 打标失败/需复核` 计数与具体文件清单，提升治理过程中的可观测性。
+
+### Changed
+
+- `peos-doctor`: 优化 PyYAML 序列化行为，通过注册自定义 `FlowList` 确保所有 Front Matter 中的 `tags` 均强制以单行数组形式输出。
+- `peos-doctor`: 重构 LLM 语义打标流水线，将约束规则置于 Prompt 末尾（近因效应），并采用 `re.search` 柔性提取 JSON，彻底解决大模型语法树死锁问题。
+- `peos-doctor`: 升级防腐层机制，支持大小写不敏感的 SSOT 字典对齐，并自动过滤、审计大模型捏造的非注册标签。
+- `peos-doctor`: 调优 LLM 通信配置，显式声明 `num_ctx: 4096`、`num_predict: -1` 且将 HTTP 请求超时时间放宽至 120 秒。
+- `README.md`: 将示例命令中的推荐模型统一调整为经过验证的稳定小参数模型 `qwen2.5:14b`。
+
 ## [0.3.1] - 2026-08-11
 
 ### Added

@@ -58,7 +58,7 @@ export PEOS_OLLAMA_API_URL="http://192.168.3.100:11434/api/chat"
 uv run peos-doctor --fix --auto-tag -m "qwen2.5:14b"
 
 # 或者在单次执行时使用 CLI 参数强制覆盖：
-uv run peos-doctor --fix --auto-tag -m "qwen3-coder:30b" --api-url "http://192.168.2.7:11434/api/chat"
+uv run peos-doctor --fix --auto-tag -m "qwen2.5:14b" --api-url "http://192.168.2.7:11434/api/chat"
 
 ### 角色别名映射 (Aliases)
 
