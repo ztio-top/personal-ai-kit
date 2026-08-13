@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.3] - 2026-08-14
+
+### Added
+
+- `peos-doctor`: 正式落地第三梯队元数据治理命令 `--optimize-tags`，支持调用大模型对历史冗余标签进行基于全局语义的降噪与精简。
+- `peos-doctor`: 引入细粒度的可观测性日志。在执行 LLM 推理前打印 `[AI 增量/全新打标] 正在推理分析: <file_name>`，并在 Debug 日志中透传文件上下文，大幅提升终端运行体验与排错效率。
+
+### Changed
+
+- `peos-doctor`: 重构打标引擎的提示词架构（Prompt Engineering）。全面弃用模糊的口语化指令，改用学术/工程化标准术语（如“全局主旨锚定”、“假阳性过滤”、“降维”），以更精准地映射模型的潜在语义空间。
+- `peos-doctor`: 引入内部思维链（JSON-based CoT）机制。大模型在输出标签数组前，必须强制前置输出结构化的推理过程（主旨提炼与干扰项排除逻辑），大幅提高了 14B 级别模型在复杂上下文中的打标准确率。
+
+### Fixed
+
+- `peos-doctor`: 修复了大模型因“指令遗忘”导致输出包含非 JSON 废话而引发的正则提取失败问题。现已通过 Ollama API 层面的 `"format": "json"` 和强 System Prompt 将输出彻底锁死。
+- `peos-doctor`: 修复了大模型在面对字典中不存在的具体工具（如 `head`, `grep`）时直接输出空数组的“错杀”问题，现通过本体映射（Ontology Mapping）规则引导模型自动向上抽象至通用领域（如 `cli`, `linux`）。
+
 ## [0.3.2] - 2026-08-13
 
 ### Added

@@ -49,7 +49,7 @@ IGNORE_FILES = {"README.md", "CHANGELOG.md", "glossary.md"}
 
 
 def get_allowed_tags(knowledge_dir: Path) -> list:
-    """从 9-Metadata/tags.yaml 提取 SSOT 合法标签池"""
+    """从 9-Metadata/tags.yaml 提取 SSOT 规范标签池"""
     tags_file = knowledge_dir / "9-Metadata" / "tags.yaml"
     if not tags_file.exists():
         return []
@@ -68,46 +68,31 @@ def get_tag_governance_config(knowledge_dir: Path) -> tuple:
     try:
         data = yaml.safe_load(tags_file.read_text(encoding="utf-8")) or {}
         tags = data.get("tags", [])
-        aliases = data.get("aliases", {})  # 别名映射，如 {"k8s": "kubernetes"}
+        aliases = data.get("aliases", {})  # 别名映射
         return tags, aliases
     except Exception:
         return [], {}
 
 
-def ask_llm_for_tags(
-    content: str, allowed_tags: list, model: str, api_url: str
+def _call_llm_for_tags(
+    prompt: str, allowed_tags: list, model: str, api_url: str, file_context: str = ""
 ) -> list:
-    """调用本地 LLM 进行语义打标，实施双重防腐拦截"""
-    if not allowed_tags:
-        return []
-
-    # 恢复适度截断 (5000字符)，既保证上下文足够，又防止超长文本冲刷掉大模型的指令注意力
-    snippet = content[:5000]
-
-    # 利用 LLM 的“近因效应 (Recency Bias)”，将正文放前面，规则放最后
-    prompt = (
-        f"以下是一篇技术知识库文档的片段：\n"
-        f"---------------------\n{snippet}\n---------------------\n\n"
-        f"作为严谨的知识库架构师，请为上述文档提取最核心的标签。\n"
-        f"【合法标签池】(SSOT)：{allowed_tags}\n\n"
-        f"【严格约束】：\n"
-        f"1. **宁缺毋滥原则**：只需挑选真正切中核心的技术栈标签（通常 **1 到 5 个**即可）。**绝对不要为了凑数而选择关联度弱的泛概念标签**。\n"
-        f"   - 反例：一篇关于 Ollama 命令行的 Cheat Sheet，核心是 'ollama'，**绝不能**因为它是大模型工具就生拉硬套 'gpu'、'ai' 或 'prompt-engineering'。\n"
-        f"2. 绝不允许捏造、自创任何不在池中的标签！如果只有 1 个相关，就只返回 1 个。\n"
-        f'3. 必须直接返回 JSON 对象，格式必须为：{{"tags": ["标签1", "标签2"]}}。不要输出任何其他解释。'
-    )
-
+    """内部通用函数：调用 LLM，强制 JSON 输出，并经过严格的防腐层清洗"""
     payload = {
         "model": model,
         "messages": [
+            {
+                "role": "system",
+                "content": "You are a strict Metadata Governance Engine. You MUST output ONLY valid JSON format. Absolutely no conversational filler, no markdown blocks. Start your response with '{'.",
+            },
             {"role": "user", "content": prompt},
         ],
         "stream": False,
+        "format": "json",
         "options": {
             "temperature": 0.0,
-            # 将 num_predict 设置为 -1（无限），或直接删除该字段，交由模型自行决定何时停止
             "num_predict": -1,
-            "num_ctx": 4096,  # 🚀 核心优化 3：显式扩大模型的上下文窗口，破解默认 2048 限制
+            "num_ctx": 4096,
         },
     }
 
@@ -116,66 +101,124 @@ def ask_llm_for_tags(
         response.raise_for_status()
 
         result_text = response.json()["message"]["content"].strip()
-        print(f"DEBUG - LLM Raw Output: '{result_text[:100]}'")
+
+        # 🚀 优化 1：Debug 日志带上明确的文件名
+        ctx_str = f"[{file_context}] " if file_context else ""
+        print(
+            f"   🐛 DEBUG - {ctx_str}LLM Raw: '{result_text[:150].replace(chr(10), ' ')}'"
+        )
 
         if not result_text:
-            print(
-                "   [⚠️ AI 打标警告] LLM 依然返回为空，请检查模型日志或尝试更换小参数模型",
-                file=sys.stderr,
-            )
+            print(f"   [⚠️ AI 打标警告] {ctx_str}LLM 返回为空", file=sys.stderr)
             return []
 
-        # 核心正则提取：从模型的任何废话中精准抠出 JSON 对象
-        json_match = re.search(r"\{[\s\S]*\}", result_text)
-        if not json_match:
-            print("   [⚠️ AI 打标警告] 未在输出中找到 JSON 格式的内容", file=sys.stderr)
-            return []
+        try:
+            predicted_data = json.loads(result_text)
+        except json.JSONDecodeError:
+            json_match = re.search(r"\{[\s\S]*\}", result_text)
+            if not json_match:
+                print(
+                    "   [⚠️ AI 打标警告] 未在输出中找到 JSON 格式的内容", file=sys.stderr
+                )
+                return []
+            predicted_data = json.loads(json_match.group(0))
 
-        json_str = json_match.group(0)
-        predicted_tags = json.loads(json_str)
-
-        # 柔性兼容：处理返回结果
-        if isinstance(predicted_tags, dict):
-            if "tags" in predicted_tags and isinstance(predicted_tags["tags"], list):
-                predicted_tags = predicted_tags["tags"]
+        predicted_tags = []
+        if isinstance(predicted_data, dict):
+            if "tags" in predicted_data and isinstance(predicted_data["tags"], list):
+                predicted_tags = predicted_data["tags"]
             else:
-                for val in predicted_tags.values():
+                for val in predicted_data.values():
                     if isinstance(val, list):
                         predicted_tags = val
                         break
 
-        # 大小写不敏感的物理防腐层 + 拦截审计日志
         if isinstance(predicted_tags, list):
-            # 将合法标签池全部转换为小写，并建立映射字典
             allowed_lower_map = {str(t).lower(): str(t) for t in allowed_tags}
-
             valid_tags = []
             hallucinated_tags = []
 
             for tag in predicted_tags:
                 tag_lower = str(tag).lower()
                 if tag_lower in allowed_lower_map:
-                    # 如果匹配成功，存入 `tags.yaml` 中标准的大小写格式
                     valid_tags.append(allowed_lower_map[tag_lower])
                 else:
-                    # 记录被防腐层拦截的幻觉标签
                     hallucinated_tags.append(tag)
 
             if hallucinated_tags:
                 print(
-                    f"   [🛡️ 防腐拦截] LLM 捏造了不在 SSOT 字典中的标签，已剔除: {hallucinated_tags}"
+                    f"   [🛡️ 防腐拦截] {ctx_str}LLM 捏造了不在规范池的标签: {hallucinated_tags}"
                 )
 
-            return valid_tags[:5]
+            return valid_tags
 
-        return []
-
-    except json.JSONDecodeError as e:
-        print(f"   [⚠️ AI 打标警告] 抠出的 JSON 解析失败: {e}", file=sys.stderr)
         return []
     except Exception as e:
-        print(f"   [⚠️ AI 打标警告] LLM 调用失败或网络异常: {e}", file=sys.stderr)
+        print(f"   [⚠️ AI 打标警告] {ctx_str}调用异常: {e}", file=sys.stderr)
         return []
+
+
+def ask_llm_for_tags(
+    content: str, allowed_tags: list, model: str, api_url: str, file_context: str = ""
+) -> list:
+    """[增量补全场景] 为完全没有 tags 的文档生成新标签"""
+    if not allowed_tags:
+        return []
+
+    snippet = content[:5000]
+    prompt = (
+        f"【文档文本片段】(Document Fragment)：\n---------------------\n{snippet}\n---------------------\n\n"
+        f"【执行角色】(Role)：元数据治理引擎 (Metadata Governance Engine)\n"
+        f"【核心任务】(Task)：基于全局语义进行高精度的技术栈标签提取。\n"
+        f"【SSOT 字典池】(Single Source of Truth)：{allowed_tags}\n\n"
+        f"【架构约束】(Architecture Constraints)：\n"
+        f"1. **高信噪比原则 (High Signal-to-Noise Ratio)**：极度收敛标签数量（1~3个，上限3个）。若仅有 1 个技术栈符合，绝对禁止凑数。\n"
+        f"2. **全局主旨锚定 (Global Semantic Dominance)**：严格区分【全局核心论点】与【局部辅助示例】。对于仅在示例中出现的从属技术栈，必须判定为局部干扰项并剔除。\n"
+        f"3. **向池内抽象归拢 (Ontology Mapping)**：如果文档的主旨是一个极度具体的工具（如 grep, awk, apt, cmd, head 等），但在【SSOT 字典池】中找不到该具体名称，**请绝对不要直接返回空数组 []**！而是应当向上抽象，从池中挑选最契合的通用领域标签（例如：'cli', 'linux', 'bash', 'automation', 'macos' 等）。\n"
+        f"4. **强制前置推理 (CoT Inference)**：必须在 JSON 内部先构造 'semantic_analysis' 字段，精准剖析核心意图，陈述向上抽象或排除干扰的逻辑。\n"
+        f"5. **SSOT 强校验 (Strict Validation)**：输出的 'tags' 必须 100% 存在于上述【SSOT 字典池】中。\n\n"
+        f"【输出规约】(Output Specification)：返回标准 JSON 对象，结构如下：\n"
+        f"{{\n"
+        f'  "semantic_analysis": "<一句话主旨提炼> + <向上抽象或排除干扰项的说明>",\n'
+        f'  "tags": ["<Tag1>", "<Tag2>"]\n'
+        f"}}\n"
+    )
+    return _call_llm_for_tags(prompt, allowed_tags, model, api_url, file_context)[:5]
+
+
+def ask_llm_for_tag_optimization(
+    current_tags: list,
+    content: str,
+    allowed_tags: list,
+    model: str,
+    api_url: str,
+    file_context: str = "",
+) -> list:
+    """[质检精简场景] 对已存在的大量冗余标签进行降噪和精简"""
+    if not allowed_tags:
+        return current_tags
+
+    snippet = content[:3000]
+    prompt = (
+        f"【当前分配的元数据】(Current Tags)：{current_tags}\n"
+        f"【文档文本片段】(Document Fragment)：\n---------------------\n{snippet}\n---------------------\n\n"
+        f"【执行角色】(Role)：元数据质量审计引擎 (Metadata Quality Auditor)\n"
+        f"【核心任务】(Task)：对现有的标签列表进行语义降噪与冗余精简 (Semantic Denoising & Pruning)。\n"
+        f"【SSOT 字典池】(Single Source of Truth)：{allowed_tags}\n\n"
+        f"【架构约束】(Architecture Constraints)：\n"
+        f"1. **维度收敛 (Dimensionality Reduction)**：将标签数量严格收敛至 1~2 个最能代表该文档工程灵魂的具体技术实体。禁止保留冗余集合。\n"
+        f"2. **过滤假阳性误判 (Filter False Positives)**：严格审查当前的标签池，强行剥离以下两类噪声数据：\n"
+        f"   - **局部示例污染 (Local Example Pollution)**：仅在正文示例中提及，并非核心探讨对象的技术栈。\n"
+        f"   - **宏观概念泛化 (Macroscopic Noise)**：颗粒度过大的抽象领域词汇（如 'ai', 'concept'）。\n"
+        f"3. **强制审计追踪 (Audit Trail)**：构造 'audit_log' 字段，说明哪些标签被判定为污染并实施裁剪。\n"
+        f"4. **SSOT 强校验 (Strict Validation)**：最终保留的 'tags' 必须位于【SSOT 字典池】中。\n\n"
+        f"【输出规约】(Output Specification)：返回标准 JSON 对象，结构如下：\n"
+        f"{{\n"
+        f'  "audit_log": "已剔除 <标签A>(局部示例污染)，保留 <标签C>(核心技术栈)。",\n'
+        f'  "tags": ["<核心Tag1>"]\n'
+        f"}}\n"
+    )
+    return _call_llm_for_tags(prompt, allowed_tags, model, api_url, file_context)[:2]
 
 
 def extract_h1_title(content: str, fallback_name: str) -> str:
@@ -227,194 +270,102 @@ def infer_metadata(filepath: Path) -> dict:
     return metadata
 
 
-def fix_front_matter(
-    target_dir: str,
-    dry_run: bool = True,
-    auto_tag: bool = False,
-    model: str = "qwen2.5:14b",
-    api_url: str = "",
-):
+def optimize_tag_governance(target_dir: str, fix: bool, model: str, api_url: str):
+    """【第三梯队】执行标签语义质量质检与冗余精简"""
     root_path = Path(target_dir)
-    if not root_path.exists():
-        print(f"❌ 错误: 目标知识库路径不存在 ({root_path})", file=sys.stderr)
-        sys.exit(1)
+    allowed_tags, _ = get_tag_governance_config(root_path)
+    if not allowed_tags:
+        print("❌ 错误: 未发现 tags.yaml 合法标签池。")
+        return
 
-    allowed_tags = []
-    if auto_tag:
-        allowed_tags = get_allowed_tags(root_path)
-        print("🤖 AI 打标已激活:")
-        print(f"   ↳ 目标接口: {api_url}")
-        print(f"   ↳ 挂载标签: {len(allowed_tags)} 个 SSOT 字典项 | 模型: {model}")
-        if not allowed_tags:
-            print(
-                "   [⚠️ 警告] 未在 9-Metadata/tags.yaml 发现合法标签，将降级为普通扫描。"
-            )
+    print(f"\n🔍 启动知识库标签质量语义质检 (Model: {model} | Fix: {fix})\n")
 
-    today = datetime.now().strftime("%Y-%m-%d")
-    fixed_count = 0
+    optimized_count = 0
     skipped_count = 0
-
-    # 🚀 新增：定义两个追踪队列
-    manual_queue = []  # 缺乏上下文，无法推断 type/domain 的队列
-    tag_failed_queue = []  # AI 打标提取失败（返回为空）的队列
-
-    print(f"\n🩺 启动 PEOS Doctor 诊断程序 (Dry-run: {dry_run}) | 目标: {root_path}\n")
 
     for root, _, files in os.walk(root_path):
         if "/." in root or root.startswith("."):
             continue
-
         for file in files:
             if not file.endswith(".md") or file in IGNORE_FILES:
                 continue
-
             filepath = Path(root) / file
             if "6-Templates" in filepath.parts or "9-Metadata" in filepath.parts:
                 continue
 
             try:
                 content = filepath.read_text(encoding="utf-8")
-            except Exception as e:
-                print(f"❌ 无法读取文件 {filepath}: {e}")
-                continue
-
-            # ================= 场景一：已有 Front Matter =================
-            if content.startswith("---"):
+                if not content.startswith("---"):
+                    continue
                 parts = content.split("---", 2)
-                if len(parts) >= 3:
-                    try:
-                        metadata = yaml.safe_load(parts[1]) or {}
-                        body_content = parts[2].strip()
-                    except Exception:
-                        skipped_count += 1
-                        continue
+                if len(parts) < 3:
+                    continue
 
-                    # 检查 tags 是否缺失、为 None 或为空列表
-                    current_tags = metadata.get("tags")
-                    is_tags_empty = not current_tags or (
-                        isinstance(current_tags, list) and len(current_tags) == 0
-                    )
+                metadata = yaml.safe_load(parts[1]) or {}
+                current_tags = metadata.get("tags", [])
 
-                    # 如果标签为空，且开启了自动打标
-                    if is_tags_empty and auto_tag and allowed_tags:
-                        predicted_tags = ask_llm_for_tags(
-                            body_content, allowed_tags, model, api_url
-                        )
-                        if predicted_tags:
-                            # 🚀 使用 FlowList 包装，强制触发单行输出规则
-                            metadata["tags"] = FlowList(predicted_tags)
-
-                            # 使用 yaml.dump 并显式指定 SafeDumper 重新生成 Front Matter
-                            new_front_matter = yaml.dump(
-                                metadata,
-                                allow_unicode=True,
-                                sort_keys=False,
-                                Dumper=yaml.SafeDumper,
-                            ).strip()
-                            new_full_content = (
-                                f"---\n{new_front_matter}\n---\n\n{body_content}\n"
-                            )
-
-                            print(
-                                f"🔧 [补充标签 & 自动修复] {filepath.relative_to(root_path)}"
-                            )
-                            print(f"   ↳ 补充缺失的 tags: {predicted_tags}")
-
-                            if not dry_run:
-                                filepath.write_text(new_full_content, encoding="utf-8")
-                            fixed_count += 1
-                            continue
-                        else:
-                            # 🚀 新增：记录已有头部但打标失败的文件
-                            tag_failed_queue.append(filepath)
-
+                if not isinstance(current_tags, list) or len(current_tags) < 3:
                     skipped_count += 1
                     continue
 
-            # ================= 场景二：完全没有 Front Matter =================
-            # 触发推断逻辑
-            inferred = infer_metadata(filepath)
+                body_content = parts[2].strip()
 
-            # 如果推断失败（例如 7-Notes 缺少 domain 子目录），拦截并放入人工队列
-            if not inferred:
-                manual_queue.append(filepath)
-                continue
+                print(
+                    f"⏳ [质检评估] 正在审查: {filepath.relative_to(root_path)} (当前包含 {len(current_tags)} 个标签)"
+                )
 
-            title = extract_h1_title(content, filepath.stem)
+                optimized_tags = ask_llm_for_tag_optimization(
+                    current_tags, body_content, allowed_tags, model, api_url
+                )
 
-            # AI 语义打标流水线
-            final_tags_list = []
-            if auto_tag and allowed_tags:
-                predicted_tags = ask_llm_for_tags(content, allowed_tags, model, api_url)
-                if predicted_tags:
-                    # 格式化为 YAML 数组风格: [k3s, ansible]
-                    final_tags_list = predicted_tags
-                else:
-                    # 🚀 新增：记录完全缺失头部，修复了头部但打标失败的文件
-                    tag_failed_queue.append(filepath)
+                if not optimized_tags or set(optimized_tags) == set(current_tags):
+                    print("   ↳ ✅ 评估结果: 当前标签紧凑或无需精简。")
+                    skipped_count += 1
+                    continue
 
-            metadata_dict = {
-                "title": title,
-                "type": inferred["type"],
-                "domain": inferred["domain"],
-                "status": inferred["status"],
-                "created": today,
-                "tags": FlowList(final_tags_list),
-            }
+                print(
+                    f"   ✂️ [降噪精简] 冗余标签已砍掉! {current_tags} ➡️ {optimized_tags}"
+                )
 
-            new_front_matter = yaml.dump(
-                metadata_dict,
-                allow_unicode=True,
-                sort_keys=False,
-                Dumper=yaml.SafeDumper,
-            ).strip()
-            yaml_header = f"---\n{new_front_matter}\n---\n\n"
+                if fix:
+                    metadata["tags"] = FlowList(optimized_tags)
+                    new_fm = yaml.dump(
+                        metadata,
+                        allow_unicode=True,
+                        sort_keys=False,
+                        Dumper=yaml.SafeDumper,
+                    ).strip()
+                    filepath.write_text(
+                        f"---\n{new_fm}\n---\n\n{body_content}\n", encoding="utf-8"
+                    )
+                    optimized_count += 1
 
-            print(f"🔧 [发现缺失 & 自动修复] {filepath.relative_to(root_path)}")
-            print(
-                f"   ↳ 注入元数据: type={inferred['type']} | domain={inferred['domain']} | tags={final_tags_list}"
-            )
+            except Exception as e:
+                print(f"❌ 处理 {filepath.name} 时出错: {e}")
 
-            if not dry_run:
-                filepath.write_text(yaml_header + content, encoding="utf-8")
-            fixed_count += 1
-
-    # 🚀 优化：增强版的最终诊断报告输出
     print("\n" + "=" * 50)
-    print("✅ 诊断报告:")
-    print(f"   - 状态正常/已跳过: {skipped_count} 篇")
-    print(f"   - 成功推断并{'拟' if dry_run else ''}修复: {fixed_count} 篇")
-
-    if tag_failed_queue:
-        print(f"   - ⚠️ AI 打标失败/需复核: {len(tag_failed_queue)} 篇")
-
-    if manual_queue:
+    print("✅ 语义精简报告:")
+    print(f"   - 跳过或无需精简: {skipped_count} 篇")
+    print(f"   - 成功执行降噪精简: {optimized_count} 篇")
+    if not fix and optimized_count > 0:
         print(
-            "\n⚠️ 以下文档因缺乏路径上下文无法自动归类，请手动介入 (Manual Intervention):"
+            "\n💡 提示: 当前为只读评估模式。执行 `doctor --optimize-tags --fix` 将真实重写冗余标签。"
         )
-        for p in manual_queue:
-            print(f"   - {p.relative_to(root_path)}")
-
-    if tag_failed_queue:
-        print("\n⚠️ 以下文档 AI 打标失败 (未生成有效 JSON 标签或触发防腐拦截):")
-        for p in tag_failed_queue:
-            print(f"   - {p.relative_to(root_path)}")
-
-    if dry_run and fixed_count > 0:
-        print("\n💡 提示: 当前为 --dry-run 模式。执行 `doctor --fix` 真实写入文件。")
     print("=" * 50)
 
 
 def audit_tag_governance(
     target_dir: str, fix: bool = False, sync_new_tags: bool = False
 ):
-    """知识库标签全局合规审计：支持别名归一化、严格净化（清除未注册标签）或演进同步（追加新标签至 tags.yaml）"""
+    """【第二梯队】知识库标签全局合规审计：支持别名归一化、大小写纠正、严格净化或演进同步"""
     root_path = Path(target_dir)
     tags_file = root_path / "9-Metadata" / "tags.yaml"
 
     allowed_tags, tag_aliases = get_tag_governance_config(root_path)
     allowed_set = set(allowed_tags)
     alias_lower_map = {str(k).lower(): str(v) for k, v in tag_aliases.items()}
+    # 🚀 新增：构建标准标签的小写映射，用于自动纠正大小写（如 Kubernetes -> kubernetes）
+    allowed_lower_map = {str(k).lower(): k for k in allowed_set}
 
     print(
         f"\n🔍 启动知识库标签合规审计 (SSOT 规范池: {len(allowed_set)} 个 | 别名映射: {len(alias_lower_map)} 条) | Mode (Fix: {fix}, Sync: {sync_new_tags})\n"
@@ -447,25 +398,33 @@ def audit_tag_governance(
             except Exception:
                 continue
 
-            # 检查漂移：既不在规范池中，也不在别名映射中的标签
-            invalid_tags = []
+            # 🚀 优化：细化审查颗粒度，不仅查野标签，也查别名和大小写
+            issues = []
             for t in doc_tags:
                 t_lower = str(t).lower()
-                if t not in allowed_set and t_lower not in alias_lower_map:
-                    invalid_tags.append(t)
-
-            if invalid_tags:
-                file_drift_map[filepath] = invalid_tags
-                for t in invalid_tags:
+                if t in allowed_set:
+                    continue  # 完全合规
+                elif t_lower in allowed_lower_map:
+                    issues.append(f"大小写错误({t})")
+                elif t_lower in alias_lower_map:
+                    issues.append(f"存在别名({t})")
+                else:
+                    issues.append(f"未注册({t})")
                     unregistered_found.add(t)
+
+            # 只要文件存在任何不规范情况，就将其推入待修复队列
+            if issues:
+                file_drift_map[filepath] = issues
 
     if not file_drift_map:
         print("✨ 标签合规审计通过：所有文档的 tags 均完全契合规范！")
         return
 
-    print(f"⚠️ 发现 {len(file_drift_map)} 篇文档存在标签漂移或未注册标签：")
-    for fp, bad_tags in file_drift_map.items():
-        print(f"   - {fp.relative_to(root_path)}: {bad_tags}")
+    print(
+        f"⚠️ 发现 {len(file_drift_map)} 篇文档需要处理（需归一化、修正大小写或清理野标签）："
+    )
+    for fp, issues in file_drift_map.items():
+        print(f"   - {fp.relative_to(root_path)}: {issues}")
 
     if unregistered_found:
         print(
@@ -476,17 +435,17 @@ def audit_tag_governance(
         print("\n" + "=" * 50)
         if sync_new_tags:
             print(
-                "🚀 [模式 A：演进同步] 正在应用别名归一化，并将新发现的合法标签同步注册至 tags.yaml..."
+                "🚀 [模式 A：演进同步] 正在应用别名与大小写归一化，并将新标签同步注册至 tags.yaml..."
             )
         else:
             print(
-                "🧹 [模式 B：严格净化] 正在应用别名归一化，并从文档中清除未注册的非法标签..."
+                "🧹 [模式 B：严格净化] 正在应用别名与大小写归一化，并清除所有未注册的非法标签..."
             )
         print("=" * 50)
 
         truly_new_tags = set()
 
-        for filepath, bad_tags in file_drift_map.items():
+        for filepath, _ in file_drift_map.items():
             try:
                 content = filepath.read_text(encoding="utf-8")
                 parts = content.split("---", 2)
@@ -499,28 +458,32 @@ def audit_tag_governance(
                 for t in doc_tags:
                     t_lower = str(t).lower()
                     if t in allowed_set:
-                        # 1. 已经是规范标签，直接保留
                         new_tags.append(t)
+                    elif t_lower in allowed_lower_map:
+                        # 🚀 新增：大小写自动修正
+                        canonical = allowed_lower_map[t_lower]
+                        new_tags.append(canonical)
+                        print(
+                            f"   ✨ [规范大小写] {filepath.name}: '{t}' ➡️ '{canonical}'"
+                        )
                     elif t_lower in alias_lower_map:
-                        # 2. 属于已知别名，安全归一化（如 k8s -> kubernetes）
+                        # 别名归一化处理恢复正常
                         canonical = alias_lower_map[t_lower]
                         new_tags.append(canonical)
                         print(
                             f"   🔄 [别名归一化] {filepath.name}: '{t}' ➡️ '{canonical}'"
                         )
                     else:
-                        # 3. 完全未注册的野标签
                         if sync_new_tags:
-                            # 演进同步模式：保留在文档中，准备收录入 SSOT 字典
                             new_tags.append(t)
                             truly_new_tags.add(t)
                             print(f"   ➕ [演进保留] {filepath.name}: 保留新标签 '{t}'")
                         else:
-                            # 严格净化模式：直接从文档中清除
                             print(
                                 f"   🗑️ [严格净化] {filepath.name}: 清除未注册标签 '{t}'"
                             )
 
+                # 去重并排序
                 metadata["tags"] = FlowList(sorted(list(set(new_tags))))
                 new_fm = yaml.dump(
                     metadata,
@@ -532,7 +495,6 @@ def audit_tag_governance(
             except Exception as e:
                 print(f"❌ 处理文件 {filepath} 失败: {e}", file=sys.stderr)
 
-        # 如果开启了 sync_new_tags，将真正的新标签追加到 tags.yaml 中
         if sync_new_tags and tags_file.exists() and truly_new_tags:
             try:
                 data = yaml.safe_load(tags_file.read_text(encoding="utf-8")) or {}
@@ -560,12 +522,187 @@ def audit_tag_governance(
         print("\n✅ 审计修复执行完毕！")
     else:
         print("\n💡 提示:")
+        print("   - 执行 `doctor --audit --fix` ➡️ 自动清洗非法标签，并执行归一化。")
         print(
-            "   - 执行 `doctor --audit --fix` ➡️ 进入【严格净化模式】（自动归一化别名，并从文档中清除所有未注册标签）。"
+            "   - 执行 `doctor --audit --fix --sync-tags` ➡️ 执行归一化，并将优质标签收录进 tags.yaml。"
         )
+
+
+def fix_front_matter(
+    target_dir: str, dry_run: bool, auto_tag: bool, model: str, api_url: str
+):
+    """【第一梯队】基础元数据修复与增量补全"""
+    root_path = Path(target_dir)
+    if not root_path.exists():
+        print(f"❌ 错误: 目标知识库路径不存在 ({root_path})", file=sys.stderr)
+        sys.exit(1)
+
+    allowed_tags = []
+    if auto_tag:
+        allowed_tags = get_allowed_tags(root_path)
+        print("🤖 AI 打标已激活:")
+        print(f"   ↳ 目标接口: {api_url}")
+        print(f"   ↳ 挂载标签: {len(allowed_tags)} 个 SSOT 字典项 | 模型: {model}")
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    fixed_count = 0
+    skipped_count = 0
+
+    manual_queue = []
+    tag_failed_queue = []
+
+    print(f"\n🩺 启动 PEOS Doctor 诊断程序 (Dry-run: {dry_run}) | 目标: {root_path}\n")
+
+    for root, _, files in os.walk(root_path):
+        if "/." in root or root.startswith("."):
+            continue
+
+        for file in files:
+            if not file.endswith(".md") or file in IGNORE_FILES:
+                continue
+
+            filepath = Path(root) / file
+            if "6-Templates" in filepath.parts or "9-Metadata" in filepath.parts:
+                continue
+
+            try:
+                content = filepath.read_text(encoding="utf-8")
+            except Exception as e:
+                print(f"❌ 无法读取文件 {filepath}: {e}")
+                continue
+
+            # ================= 场景一：已有 Front Matter =================
+            if content.startswith("---"):
+                parts = content.split("---", 2)
+                if len(parts) >= 3:
+                    try:
+                        metadata = yaml.safe_load(parts[1]) or {}
+                        body_content = parts[2].strip()
+                    except Exception:
+                        skipped_count += 1
+                        continue
+
+                    current_tags = metadata.get("tags")
+                    is_tags_empty = not current_tags or (
+                        isinstance(current_tags, list) and len(current_tags) == 0
+                    )
+
+                    if is_tags_empty and auto_tag and allowed_tags:
+                        # 🚀 优化 2：耗时操作前，先打日志，避免终端像“假死”一样
+                        print(
+                            f"⏳ [AI 增量打标] 正在推理分析: {filepath.relative_to(root_path)}"
+                        )
+
+                        # 传入 file_context
+                        predicted_tags = ask_llm_for_tags(
+                            body_content,
+                            allowed_tags,
+                            model,
+                            api_url,
+                            file_context=filepath.name,
+                        )
+                        if predicted_tags:
+                            metadata["tags"] = FlowList(predicted_tags)
+
+                            new_front_matter = yaml.dump(
+                                metadata,
+                                allow_unicode=True,
+                                sort_keys=False,
+                                Dumper=yaml.SafeDumper,
+                            ).strip()
+                            new_full_content = (
+                                f"---\n{new_front_matter}\n---\n\n{body_content}\n"
+                            )
+
+                            print(
+                                f"🔧 [补充标签 & 自动修复] {filepath.relative_to(root_path)}"
+                            )
+                            print(f"   ↳ 补充缺失的 tags: {predicted_tags}")
+
+                            if not dry_run:
+                                filepath.write_text(new_full_content, encoding="utf-8")
+                            fixed_count += 1
+                            continue
+                        else:
+                            tag_failed_queue.append(filepath)
+
+                    skipped_count += 1
+                    continue
+
+            # ================= 场景二：完全没有 Front Matter =================
+            inferred = infer_metadata(filepath)
+
+            if not inferred:
+                manual_queue.append(filepath)
+                continue
+
+            title = extract_h1_title(content, filepath.stem)
+
+            final_tags_list = []
+            if auto_tag and allowed_tags:
+                # 🚀 优化 2：耗时操作前日志
+                print(
+                    f"⏳ [AI 全新打标] 正在推理分析: {filepath.relative_to(root_path)}"
+                )
+
+                # 传入 file_context
+                predicted_tags = ask_llm_for_tags(
+                    content, allowed_tags, model, api_url, file_context=filepath.name
+                )
+                if predicted_tags:
+                    final_tags_list = predicted_tags
+                else:
+                    tag_failed_queue.append(filepath)
+
+            metadata_dict = {
+                "title": title,
+                "type": inferred["type"],
+                "domain": inferred["domain"],
+                "status": inferred["status"],
+                "created": today,
+                "tags": FlowList(final_tags_list),
+            }
+
+            new_front_matter = yaml.dump(
+                metadata_dict,
+                allow_unicode=True,
+                sort_keys=False,
+                Dumper=yaml.SafeDumper,
+            ).strip()
+            yaml_header = f"---\n{new_front_matter}\n---\n\n"
+
+            print(f"🔧 [发现缺失 & 自动修复] {filepath.relative_to(root_path)}")
+            print(
+                f"   ↳ 注入元数据: type={inferred['type']} | domain={inferred['domain']} | tags={final_tags_list}"
+            )
+
+            if not dry_run:
+                filepath.write_text(yaml_header + content, encoding="utf-8")
+            fixed_count += 1
+
+    print("\n" + "=" * 50)
+    print("✅ 诊断报告:")
+    print(f"   - 状态正常/已跳过: {skipped_count} 篇")
+    print(f"   - 成功推断并{'拟' if dry_run else ''}修复: {fixed_count} 篇")
+
+    if tag_failed_queue:
+        print(f"   - ⚠️ AI 打标失败/需复核: {len(tag_failed_queue)} 篇")
+
+    if manual_queue:
         print(
-            "   - 执行 `doctor --audit --fix --sync-tags` ➡️ 进入【演进同步模式】（自动归一化别名，并将新发现的优质标签收录进 tags.yaml）。"
+            "\n⚠️ 以下文档因缺乏路径上下文无法自动归类，请手动介入 (Manual Intervention):"
         )
+        for p in manual_queue:
+            print(f"   - {p.relative_to(root_path)}")
+
+    if tag_failed_queue:
+        print("\n⚠️ 以下文档 AI 打标失败 (未生成有效 JSON 标签或触发防腐拦截):")
+        for p in tag_failed_queue:
+            print(f"   - {p.relative_to(root_path)}")
+
+    if dry_run and fixed_count > 0:
+        print("\n💡 提示: 当前为 --dry-run 模式。执行 `doctor --fix` 真实写入文件。")
+    print("=" * 50)
 
 
 def main():
@@ -583,6 +720,8 @@ def main():
         "-m", "--model", default="qwen2.5:14b", help="智能打标使用的 Ollama 模型名称"
     )
     parser.add_argument("--api-url", help="Ollama API 完整接口地址")
+
+    # [第二梯队命令]
     parser.add_argument(
         "--audit",
         action="store_true",
@@ -594,8 +733,14 @@ def main():
         help="配合 --audit --fix 使用，将新发现的标签自动同步注册到 tags.yaml",
     )
 
-    args = parser.parse_args()
+    # [第三梯队命令]
+    parser.add_argument(
+        "--optimize-tags",
+        action="store_true",
+        help="高级治理：调用 LLM 对已分配了过多标签的文档进行语义质检与降噪精简",
+    )
 
+    args = parser.parse_args()
     target_dir = args.dir or os.getenv("PEOS_KNOWLEDGE_DIR") or "."
     api_url = (
         args.api_url
@@ -603,7 +748,12 @@ def main():
         or "http://127.0.0.1:11434/api/chat"
     )
 
-    if args.audit:
+    # 路由选择分发
+    if args.optimize_tags:
+        optimize_tag_governance(
+            target_dir, fix=args.fix, model=args.model, api_url=api_url
+        )
+    elif args.audit:
         audit_tag_governance(target_dir, fix=args.fix, sync_new_tags=args.sync_tags)
     else:
         fix_front_matter(
