@@ -7,6 +7,6 @@ system:
 roles:
   - devops-engineer
 contexts:
-  - pkm-ecosystem
+  - peos-architecture
 workflows:
   - project-management

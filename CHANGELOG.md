@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 
 - `peos-doctor`: 重构打标引擎的提示词架构（Prompt Engineering）。全面弃用模糊的口语化指令，改用学术/工程化标准术语（如“全局主旨锚定”、“假阳性过滤”、“降维”），以更精准地映射模型的潜在语义空间。
 - `peos-doctor`: 引入内部思维链（JSON-based CoT）机制。大模型在输出标签数组前，必须强制前置输出结构化的推理过程（主旨提炼与干扰项排除逻辑），大幅提高了 14B 级别模型在复杂上下文中的打标准确率。
+- **Profiles**: Migrated `tech-lead` context dependency from `pkm-ecosystem` to `peos-architecture`.
 
 ### Fixed
 
