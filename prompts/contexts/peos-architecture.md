@@ -15,11 +15,28 @@ description: 个人工程操作系统 (PEOS) 架构与防腐规范、SRE 与工�
 
 - **`1-Projects/`**: (PARA) 活跃的工程任务。
 - **`2-Areas/`**: (PARA) 长期关注领域。
-- **`3-Resources/`**: (Diátaxis) 核心技术域资产。每个子领域严格区分为 `tutorials/` (学习), `how-to/` (任务), `reference/` (速查), `explanation/` (原理)。每个子领域内严格遵循 Diátaxis 四象限物理隔离：
-  - `tutorials/` (入门教程): 面向**学习 (Learning)**。用于从零接触新技术时，带领自己建立基础认知的向导式文档。注重过程体验。
-  - `how-to/` (实战指南): 面向**任务 (Task)**。存放解决具体真实问题的步骤化指南（如“如何把 Ollama 接入 WebUI”）。允许探索和试错。
-  - `reference/` (参考手册): 面向**速查 (Information)**。毫无废话，存放确定的配置字典、API 规范与极简命令速查表 (Cheat Sheet)，客观严谨，即查即用。
-  - `explanation/` (原理剖析): 面向**理解 (Understanding)**。深入探究底层机制、概念对比与工程规范。只解答 Why 和原理，坚决不写操作命令。
+- **`3-Resources/`**: (Diátaxis) 核心技术域资产。每个子领域严格区分为 `tutorials/` (学习), `how-to/` (任务), `reference/` (速查), `explanation/` (原理)。若新内容无法划分到现有子领域，请创建一个范围不能太局限的子领域。
+  - 已有子领域：
+    - ai-ecosystem
+    - automation
+    - containers
+    - databases
+    - editors
+    - engineering-standards
+    - java-ecosystem
+    - kubernetes
+    - middleware
+    - modern-cli
+    - os-network
+    - package-managers
+    - proxy
+    - terminals
+    - web-dev
+  - 每个子领域内严格遵循 Diátaxis 四象限物理隔离：
+    - `tutorials/` (入门教程): 面向**学习 (Learning)**。用于从零接触新技术时，带领自己建立基础认知的向导式文档。注重过程体验。
+    - `how-to/` (实战指南): 面向**任务 (Task)**。存放解决具体真实问题的步骤化指南（如“如何把 Ollama 接入 WebUI”）。允许探索和试错。
+    - `reference/` (参考手册): 面向**速查 (Information)**。毫无废话，存放确定的配置字典、API 规范与极简命令速查表 (Cheat Sheet)，客观严谨，即查即用。
+    - `explanation/` (原理剖析): 面向**理解 (Understanding)**。深入探究底层机制、概念对比与工程规范。只解答 Why 和原理，坚决不写操作命令。
 - **`4-Runbooks/`**: (SRE 应急) 生产事故 SOP，要求极高确定性与零认知负荷。
 - **`5-ADR/`**: (架构决策) 架构决策记录，不可变资产。
 - **`6-Templates/`**: (标准模板) 存放各类 Markdown SOP 模板及 Front Matter 规范。
