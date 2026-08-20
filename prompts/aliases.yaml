@@ -5,3 +5,4 @@ ansible: ansible-engineer
 pve: pve-infra-migration
 sec: security-audit
 peos: tech-lead
+ai-kit: ai-kit-maintainer

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.4] - 2026-08-20
+
+### Added
+
+- **Profiles**: 新增 `ai-kit-maintainer` 提示词剧本，赋能大模型智能体（如 Cursor/Cline）对本项目自身进行符合架构规范的代码迭代 (Dogfooding)。
+- **Contexts**: 新增 `ai-kit-architecture` 架构上下文，体系化界定了 PromptOps、RAG、Governance 三大引擎的 MVC 逻辑分离与物理防腐边界。
+- **Roles**: 新增 `python-cli-architect` 角色面具，沉淀了 `argparse` 设计、JSON Schema 约束及 CLI 人机交互可观测性等最佳实践。
+- **Workflows**: 新增 `cli-development` 标准执行流，为未来的跨引擎重构和新指令开发提供规范化指导。
+- **Aliases**: 在 `aliases.yaml` 字典中追加注册了 `ai-kit` 别名。
+
 ## [0.3.3] - 2026-08-14
 
 ### Added

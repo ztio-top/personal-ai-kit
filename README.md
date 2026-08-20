@@ -30,10 +30,22 @@ uv sync
 ### 引擎 A: PromptOps 编译器 (指令: promptops)
 
 ```bash
-# 在终端直接运行/预览 profile
+# 示例: 在终端直接运行/预览 profile
 uv run promptops run k3s-admin
 
-# 将特定的架构师灵魂注入到业务代码仓库 (生成 .prompts 配置文件，供 Cursor/Continue 使用)
+# 示例: 直接输出到终端并复制 (Gemini Web 对话前置) for macOS
+uv run promptops run kit | pbcopy
+
+# 示例: 直接输出到终端并复制 (Gemini Web 对话前置) for chezmoi copy function
+uv run promptops run kit | c
+
+# 示例: 向当前目录导出 Continue 规则
+uv run promptops export continue kit -t .
+
+# 示例: 向当前目录导出 Cursor MDC 规则
+uv run promptops export cursor kit -t .
+
+# 示例: 将特定的架构师灵魂注入到业务代码仓库 (生成 .prompts 配置文件，供 Cursor/Continue 使用)
 uv run promptops export cursor java-architect -t ~/workspace/my-spring-app
 
 ```
@@ -114,15 +126,12 @@ uv run peos-doctor --optimize-tags --fix -m "qwen2.5:14b"
 
 系统已内置以下快捷调用别名，可直接通过 CLI 唤起特定架构师角色进行零缝隙切换：
 
-| 别名 (Alias) | 对应 Profile          | 适用场景与能力                                                                                     |
-| ------------ | --------------------- | -------------------------------------------------------------------------------------------------- |
-| `java`       | `java-architect`      | Java 后端架构设计、多 JDK 混编环境下的代码审查与性能调优。                                         |
-| `k8s`        | `k3s-admin`           | 跨云 K3s 故障排查、CNI 网络诊断、高可用集群维护。                                                  |
-| `ansible`    | `ansible-engineer`    | 基础设施即代码 (IaC) 自动化部署、跨平台 Playbook 生成。                                            |
-| `pve`        | `pve-infra-migration` | Proxmox VE 底层运维、网络重构与硬件/GPU 直通调优。                                                 |
-| `sec`        | `security-audit`      | 全栈漏洞挖掘、并发安全审查与零信任架构设计。                                                       |
-| **`peos`**   | **`tech-lead`**       | **技术负责人。执行工程资产自动化生成流（Commit/Changelog/ADR），并维护 Diátaxis 知识库架构规范。** |
-
-```
-
-```
+| 别名 (Alias) | 对应 Profile            | 适用场景与能力                                                                                  |
+| ------------ | ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `java`       | `java-architect`        | Java 后端架构设计、多 JDK 混编环境下的代码审查与性能调优。                                      |
+| `k8s`        | `k3s-admin`             | 跨云 K3s 故障排查、CNI 网络诊断、高可用集群维护。                                               |
+| `ansible`    | `ansible-engineer`      | 基础设施即代码 (IaC) 自动化部署、跨平台 Playbook 生成。                                         |
+| `pve`        | `pve-infra-migration`   | Proxmox VE 底层运维、网络重构与硬件/GPU 直通调优。                                              |
+| `sec`        | `security-audit`        | 全栈漏洞挖掘、并发安全审查与零信任架构设计。                                                    |
+| `peos`       | `tech-lead`             | 技术负责人。执行工程资产自动化生成流（Commit/Changelog/ADR），并维护 Diátaxis 知识库架构规范。  |
+| **`ai-kit`** | **`ai-kit-maintainer`** | **全栈架构师。辅助 personal-ai-kit 工具链自身的三大引擎迭代、CLI 开发规范及 uv 环境基建维护。** |

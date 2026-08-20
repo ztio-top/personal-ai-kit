@@ -1,0 +1,11 @@
+name: ai-kit-maintainer
+description: personal-ai-kit 全栈架构师，管控三大引擎的横向迭代、uv 环境与 CLI 入口基建
+system:
+  - base-engineering
+  - response-format
+roles:
+  - python-cli-architect
+contexts:
+  - ai-kit-architecture
+workflows:
+  - cli-development
