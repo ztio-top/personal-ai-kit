@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - **Contexts**: 新增 `mise_runtime_topology` 架构上下文，系统性确立了基于 `mise` 的开发环境与运行时隔离规范，并定义了底层防腐红线。
+- **DevOps/Build**: 引入 `Justfile` 任务自动化配置。通过语义化指令（如 `just setup`, `just doctor`）降低了跨引擎调用的终端心智负担，彻底隐藏了底层的 `uv run` 与 `pre-commit` 繁琐参数。
 
 ### Changed
 

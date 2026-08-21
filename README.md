@@ -20,7 +20,60 @@
 
 ## 🚀 快速开始
 
-本项目完全由 `uv` 托管虚拟环境与依赖。
+本项目完全由 `uv` 托管虚拟环境与依赖，并推荐使用 `just` 任务运行器来简化命令调用。
+
+```bash
+# 1. 环境初始化（自动执行 uv sync 与 pre-commit 钩子注册）
+just setup
+
+# 2. 全量代码格式化与合规检查
+just lint
+
+```
+
+### 引擎 A: PromptOps 编译器 (指令: just promptops)
+
+```bash
+# 示例: 在终端直接运行/预览 profile
+just promptops run k3s-admin
+
+# 示例: 向当前工程极速注入自维护规则 (Dogfooding 专属)
+just export-rules continue
+# 或针对 Cursor: just export-rules cursor
+
+```
+
+### 引擎 B: PEOS RAG 问答机 (指令: just ask)
+
+```bash
+# 必须先设置外部知识库环境变量
+export PEOS_KNOWLEDGE_DIR="$HOME/git/[github.com/ztio-top/knowledge](https://github.com/ztio-top/knowledge)"
+
+# 默认仅查询 type=runbook 且 status=active 的高质量资产，并可附加参数
+just ask "K3s 节点离线怎么恢复？" -k "WireGuard"
+
+```
+
+### 引擎 C: PEOS Doctor 治理机 (指令: just doctor)
+
+通过 `just doctor` 直接透传参数至治理引擎：
+
+```bash
+# 1. 安全扫描 (Dry-run 模式)
+just doctor
+
+# 2. 实际修复 (写入推断出的 YAML Front Matter)
+just doctor --fix
+
+# 3. 标签合规审计与净化
+just doctor --audit --fix
+
+# 4. 存量分类学智能平移
+just doctor --migrate-cheatsheets --fix -m "qwen2.5:14b"
+
+```
+
+## 🚀 快速开始 uv 方式
 
 ```bash
 # 环境初始化
