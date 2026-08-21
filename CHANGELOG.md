@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.6] - 2026-08-21
+
+### Added
+
+- **Contexts**: 新增 `mise_runtime_topology` 架构上下文，系统性确立了基于 `mise` 的开发环境与运行时隔离规范，并定义了底层防腐红线。
+
+### Changed
+
+- **Profiles**: 为 `ai-kit-maintainer` 和 `ansible-engineer` 角色追加挂载了 `mise_runtime_topology` 上下文。确保大模型智能体在参与工具链维护及生成 Ansible 自动化基线时，彻底抛弃传统的全局包管理命令（如 `npm -g`、`pip install`），转向严格的 `.mise.toml` 声明式生态。
+
 ## [0.3.5] - 2026-08-21
 
 ### Added

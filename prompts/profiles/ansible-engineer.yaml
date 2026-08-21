@@ -9,5 +9,6 @@ roles:
 contexts:
   - homelab-infra
   - network-mesh
+  - mise_runtime_topology
 workflows:
   - generate-playbook

@@ -7,5 +7,6 @@ roles:
   - python-cli-architect
 contexts:
   - ai-kit-architecture
+  - mise_runtime_topology
 workflows:
   - cli-development
