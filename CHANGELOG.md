@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.7] - 2026-08-21
+
+### Added
+
+- **DevOps/Build**: 引入 `.mise.toml` 配置文件，正式采用 `mise-en-place` 接管全局运行时拓扑与项目级工具链。
+- **DevOps/Build**: 引入 `.pre-commit-config.yaml`，落地“质量左移 (Shift Left)”策略。配置了基于 `ruff` 的 Python 代码格式化及通用的 YAML/JSON 语法强校验拦截器。
+
+### Changed
+
+- **Documentation**: 更新 `README.md` 中的“快速开始”指南，补充了基于 `mise` 的基础设施拉起时序。
+
+### Removed
+
+- **DevOps/Build**: 彻底移除 `.envrc` (direnv) 和 `.python-version`，将底层环境配置全面收敛至 `.mise.toml`，消除多配置文件导致的状态漂移风险。
+
 ## [0.3.6] - 2026-08-21
 
 ### Added

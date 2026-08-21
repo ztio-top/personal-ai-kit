@@ -1,0 +1,15 @@
+# .mise.toml
+[tools]
+# 基础语言运行时
+python = "3.12"
+
+# 核心构建与包管理工具
+uv = "latest"
+just = "latest"
+
+# 质量控制工具 (遵循 Python 包仅使用 uv 引擎注入的规范)
+"pre-commit" = "latest"
+
+[env]
+# 确保虚拟环境目录名称规范，便于 uv 自动识别
+UV_PROJECT_ENVIRONMENT = ".venv"

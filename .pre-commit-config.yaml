@@ -1,0 +1,31 @@
+# /.pre-commit-config.yaml
+# 默认包含的文件类型，跳过 .venv 等虚拟环境目录
+exclude: "^.venv/|build/|repomix-.*"
+
+repos:
+  # ==========================================
+  # 1. 通用基础拦截器 (Base Hooks)
+  # ==========================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md] # 允许 Markdown 使用两个空格换行
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: check-yaml
+        args: [--allow-multiple-documents] # 兼容包含多文档的复杂 YAML
+      - id: check-json
+
+  # ==========================================
+  # 2. Python 极速代码格式化与规范检查 (Ruff)
+  # ==========================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.1
+    hooks:
+      # 执行代码 Lint (替代 Flake8/isort)
+      - id: ruff
+        args: [--fix]
+      # 执行代码格式化 (替代 Black)
+      - id: ruff-format

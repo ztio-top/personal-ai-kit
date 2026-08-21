@@ -20,9 +20,13 @@
 
 ## 🚀 快速开始
 
-本项目完全由 `uv` 托管虚拟环境与依赖，并推荐使用 `just` 任务运行器来简化命令调用。
+本项目完全由 `mise` 接管底层工具链，由 `uv` 托管 Python 依赖，推荐使用 `just` 任务运行器。
 
 ```bash
+# 0. 基础设施就绪 (首次 Clone 仓库时必须执行)
+mise trust
+mise install
+
 # 1. 环境初始化（自动执行 uv sync 与 pre-commit 钩子注册）
 just setup
 
