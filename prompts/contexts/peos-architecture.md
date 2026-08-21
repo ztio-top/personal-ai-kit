@@ -46,15 +46,26 @@ description: 个人工程操作系统 (PEOS) 架构与防腐规范、SRE 与工�
 
 ## 2. 生成约束与生命周期防腐层
 
-生成的 Markdown 文件**必须**在顶部包含 YAML Front Matter 头信息以防止知识腐化。必须严格使用以下枚举值：
+生成的 Markdown 文件必须在顶部包含 YAML Front Matter 头信息以防止知识腐化。必须严格使用以下枚举值 (SSOT):
 
 ```yaml
 ---
 title: <精准的标题>
-type: <runbook | adr | how-to | reference | explanation | tutorial | note>
-# 状态枚举与语义：
-# draft: 构思中草稿 / active: 生产可用 / deprecated: 运行中但不推荐 / superseded: 被新方案取代的旧方案 / archived: 彻底废弃
-status: <draft | active | deprecated | superseded | archived>
+# 核心类型 (Type)：
+# runbook (生产应急) / adr (架构决策) / how-to (实战指南) / explanation (原理剖析) / tutorial (零基础向导) / note (碎片草稿)
+# reference (大而全的详尽字典白皮书) / cheatsheet (高密度的极简速查表、Snippet)
+type: <type_enum>
+
+# 技术域 (Domain)：
+# kubernetes / ai-ecosystem / automation / os-network / modern-cli / terminals / editors / java-ecosystem / web-dev / databases / containers / middleware / architecture
+# [软技能域]: pkm (个人管理) / ideas (未验证构思) / uncategorized (未分类缓冲)
+domain: <domain_enum>
+
+# 状态枚举 (Status)：
+# draft (构思中，RAG 忽略) / active (生产可用 SSOT) / deprecated (弃用警告)
+# superseded (被新方案取代，原地保留历史) / archived (彻底废弃，需物理移动至 8-Archives/)
+status: <status_enum>
+
 created: YYYY-MM-DD
 tags: [tag1, tag2]
 ---

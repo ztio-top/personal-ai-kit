@@ -221,6 +221,60 @@ def ask_llm_for_tag_optimization(
     return _call_llm_for_tags(prompt, allowed_tags, model, api_url, file_context)[:2]
 
 
+def ask_llm_for_type_migration(
+    content: str, model: str, api_url: str, file_context: str = ""
+) -> str:
+    """[分类学迁移场景] 判定 reference 是否应降级为 cheatsheet"""
+    snippet = content[:3000]
+    prompt = (
+        f"【文档文本片段】(Document Fragment)：\n---------------------\n{snippet}\n---------------------\n\n"
+        f"【执行角色】(Role)：PEOS 分类学架构师 (Taxonomy Architect)\n"
+        f"【核心任务】(Task)：这是一个当前被标记为 'reference' 的文档，请你基于文本主旨，判定它是否应该被平移为 'cheatsheet'。\n\n"
+        f"【分类学边界定义】(Taxonomy Definitions)：\n"
+        f"1. **reference**：大而全的详尽字典、API 端点白皮书、全量配置手册。特点是“厚重、详尽、官方文档级别”。\n"
+        f"2. **cheatsheet**：高密度的极简速查表、高频快捷键、Snippet 备忘录、常用命令罗列。特点是“轻量、速查、没有废话的步骤和代码”。\n\n"
+        f"【强制前置推理 (CoT)】：构造 'analysis' 字段，精准剖析文档性质，然后给出 'target_type' (仅能是 'reference' 或 'cheatsheet')。\n\n"
+        f"【输出规约】(Output Specification)：返回标准 JSON，结构如下：\n"
+        f"{{\n"
+        f'  "analysis": "本文档全是高频 docker 命令的罗列，无深度解析，符合速查表特征。",\n'
+        f'  "target_type": "cheatsheet"\n'
+        f"}}\n"
+    )
+
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You MUST output ONLY valid JSON format. Start your response with '{'.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": 0.0, "num_predict": -1},
+    }
+
+    try:
+        response = requests.post(api_url, json=payload, timeout=120)
+        response.raise_for_status()
+        result_text = response.json()["message"]["content"].strip()
+
+        # 解析 JSON
+        try:
+            predicted_data = json.loads(result_text)
+        except json.JSONDecodeError:
+            json_match = re.search(r"\{[\s\S]*\}", result_text)
+            if not json_match:
+                return "reference"
+            predicted_data = json.loads(json_match.group(0))
+
+        return predicted_data.get("target_type", "reference")
+    except Exception as e:
+        print(f"   [⚠️ 迁移打标警告] [{file_context}] 调用异常: {e}", file=sys.stderr)
+        return "reference"
+
+
 def extract_h1_title(content: str, fallback_name: str) -> str:
     match = re.search(r"^#\s+(.+)$", content, flags=re.MULTILINE)
     if match:
@@ -705,8 +759,87 @@ def fix_front_matter(
     print("=" * 50)
 
 
+def migrate_cheatsheets(target_dir: str, fix: bool, model: str, api_url: str):
+    """【第四梯队】知识库分类学重构：Reference -> Cheatsheet 智能平移"""
+    root_path = Path(target_dir)
+    print(
+        f"\n🚀 启动分类学智能迁移 (Reference ➡️ Cheatsheet) | Model: {model} | Fix: {fix}\n"
+    )
+
+    migrated_count = 0
+    skipped_count = 0
+
+    for root, _, files in os.walk(root_path):
+        if "/." in root or root.startswith("."):
+            continue
+        for file in files:
+            if not file.endswith(".md") or file in IGNORE_FILES:
+                continue
+            filepath = Path(root) / file
+
+            try:
+                content = filepath.read_text(encoding="utf-8")
+                if not content.startswith("---"):
+                    continue
+                parts = content.split("---", 2)
+                if len(parts) < 3:
+                    continue
+
+                metadata = yaml.safe_load(parts[1]) or {}
+                # 仅拦截目前是 reference 的资产
+                if metadata.get("type") != "reference":
+                    continue
+
+                body_content = parts[2].strip()
+                print(f"⏳ [分析中] {filepath.relative_to(root_path)}")
+
+                target_type = ask_llm_for_type_migration(
+                    body_content, model, api_url, filepath.name
+                )
+
+                if target_type == "cheatsheet":
+                    print("   ↳ 🎯 判定为速查表 (Cheatsheet)！准备平移。")
+                    if fix:
+                        metadata["type"] = "cheatsheet"
+
+                        # 👇 新增：在 dump 前强制将 list 包装为 FlowList 以维持单行 [a, b] 格式
+                        if "tags" in metadata and isinstance(metadata["tags"], list):
+                            metadata["tags"] = FlowList(metadata["tags"])
+
+                        new_fm = yaml.dump(
+                            metadata,
+                            allow_unicode=True,
+                            sort_keys=False,
+                            Dumper=yaml.SafeDumper,
+                        ).strip()
+                        filepath.write_text(
+                            f"---\n{new_fm}\n---\n\n{body_content}\n", encoding="utf-8"
+                        )
+                    migrated_count += 1
+                else:
+                    print("   ↳ 🛡️ 判定为厚重文档 (Reference)，保持不变。")
+                    skipped_count += 1
+
+            except Exception as e:
+                print(f"❌ 处理 {filepath.name} 时出错: {e}")
+
+    print("\n" + "=" * 50)
+    print("✅ 迁移报告:")
+    print(f"   - 维持 Reference 不变: {skipped_count} 篇")
+    print(
+        f"   - 成功判定为 Cheatsheet 并{'拟' if not fix else ''}迁移: {migrated_count} 篇"
+    )
+    if not fix and migrated_count > 0:
+        print(
+            "\n💡 提示: 当前为只读模式。执行 `doctor --migrate-cheatsheets --fix` 将真实覆写文件。"
+        )
+    print("=" * 50)
+
+
 def main():
     parser = argparse.ArgumentParser(description="PEOS 知识库自动修复与智能治理工具")
+
+    # [全局共享参数]
     parser.add_argument(
         "--fix", action="store_true", help="关闭 dry-run 模式，实际修改文件"
     )
@@ -714,12 +847,14 @@ def main():
         "-d", "--dir", help="知识库根目录 (优先读取 PEOS_KNOWLEDGE_DIR)"
     )
     parser.add_argument(
-        "--auto-tag", action="store_true", help="启用基于大模型的智能语义打标"
-    )
-    parser.add_argument(
         "-m", "--model", default="qwen2.5:14b", help="智能打标使用的 Ollama 模型名称"
     )
     parser.add_argument("--api-url", help="Ollama API 完整接口地址")
+
+    # [第一梯队命令 (默认执行流)]
+    parser.add_argument(
+        "--auto-tag", action="store_true", help="启用基于大模型的智能语义打标"
+    )
 
     # [第二梯队命令]
     parser.add_argument(
@@ -740,6 +875,13 @@ def main():
         help="高级治理：调用 LLM 对已分配了过多标签的文档进行语义质检与降噪精简",
     )
 
+    # [第四梯队命令]
+    parser.add_argument(
+        "--migrate-cheatsheets",
+        action="store_true",
+        help="自动扫描 reference 资产，将快捷键/Snippet 类文档智能平移为 cheatsheet",
+    )
+
     args = parser.parse_args()
     target_dir = args.dir or os.getenv("PEOS_KNOWLEDGE_DIR") or "."
     api_url = (
@@ -749,7 +891,9 @@ def main():
     )
 
     # 路由选择分发
-    if args.optimize_tags:
+    if args.migrate_cheatsheets:
+        migrate_cheatsheets(target_dir, fix=args.fix, model=args.model, api_url=api_url)
+    elif args.optimize_tags:
         optimize_tag_governance(
             target_dir, fix=args.fix, model=args.model, api_url=api_url
         )

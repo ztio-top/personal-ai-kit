@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.5] - 2026-08-21
+
+### Added
+
+- **Governance Engine**: `peos-doctor` 脚本新增 `--migrate-cheatsheets` 第四梯队分类学重构指令。通过调用大语言模型进行二元分类，将历史存量的 `reference` 资产智能平移为轻量级的 `cheatsheet`。
+
+### Changed
+
+- **Contexts**: 更新 `peos-architecture.md` 提示词，使生成的 Front Matter 约束全面对齐最新版的分类学 (Taxonomy) 字典，包括软技能域与缓冲状态的声明。
+- **Governance Engine**: 优化了 `cli.py` 中 `argparse` 的代码层结构，使得全局参数与不同梯队操作指令的物理边界更加清晰。
+
+### Fixed
+
+- **Governance Engine**: 修复了 `--migrate-cheatsheets` 命令重写 YAML 时，数组格式发生漂移的问题。通过在写入前应用 `FlowList` 拦截，确保 `tags` 始终保持单行括号格式 `[tag1, tag2]`。
+
 ## [0.3.4] - 2026-08-20
 
 ### Added

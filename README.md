@@ -120,6 +120,18 @@ uv run peos-doctor --optimize-tags --fix -m "qwen2.5:14b"
 
 ```
 
+#### 第四梯队：分类学智能重构 (Taxonomy Migration)
+
+针对知识库演进过程中的分类字典裂变（例如将大而全的参考手册与轻量的速查表物理分离），利用大模型作为二元分类器，对历史资产执行无损的静默平移。
+
+```bash
+# 智能扫描存量的 reference 资产，将判定为“快捷键/Snippet”的轻量文档提取为 cheatsheet (只读/Dry-run 模式)
+uv run peos-doctor --migrate-cheatsheets -m "qwen2.5:14b"
+
+# 执行真实的分类学平移与元数据回写
+uv run peos-doctor --migrate-cheatsheets --fix -m "qwen2.5:14b"
+```
+
 ---
 
 ## 🎭 角色别名映射 (Aliases)
